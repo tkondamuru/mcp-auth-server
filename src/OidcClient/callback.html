@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OIDC Callback - Authorization Code Received</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-gradient: radial-gradient(circle at 0% 0%, #1e1b4b 0%, #0f172a 100%);
+            --card-bg: rgba(30, 41, 59, 0.45);
+            --border: rgba(255, 255, 255, 0.08);
+            --primary: linear-gradient(135deg, #a855f7 0%, #6366f1 100%);
+            --success: #10b981;
+            --error: #ef4444;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 2rem 0;
+            box-sizing: border-box;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 750px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            padding: 2.5rem;
+            border-radius: 24px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            margin-bottom: 2rem;
+        }
+
+        h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-top: 0;
+            margin-bottom: 0.5rem;
+            color: #d8b4fe;
+        }
+
+        p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            line-height: 1.5;
+            margin-bottom: 1.5rem;
+            font-weight: 300;
+        }
+
+        .value-box {
+            background: rgba(15, 23, 42, 0.6);
+            padding: 1rem 1.25rem;
+            border-radius: 12px;
+            font-family: Consolas, monospace;
+            font-size: 0.9rem;
+            color: var(--success);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            word-break: break-all;
+            margin-bottom: 1.5rem;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+            max-height: 120px;
+            overflow-y: auto;
+        }
+
+        .btn {
+            background: var(--primary);
+            color: var(--text-primary);
+            border: none;
+            padding: 0.85rem 2rem;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 14px rgba(168, 85, 247, 0.3);
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(168, 85, 247, 0.4);
+            filter: brightness(1.1);
+        }
+
+        .btn:disabled {
+            background: #475569;
+            color: #94a3b8;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: var(--text-primary);
+            margin-left: 0.75rem;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+            box-shadow: none;
+        }
+
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .json-box {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 1.25rem;
+            font-family: Consolas, monospace;
+            font-size: 0.85rem;
+            color: #38bdf8;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            margin-top: 0.5rem;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .badge-status {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.6rem;
+            border-radius: 99px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-success {
+            background: rgba(16, 185, 129, 0.15);
+            color: #d1fae5;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .status-pending {
+            background: rgba(234, 179, 8, 0.15);
+            color: #fef9c3;
+            border: 1px solid rgba(234, 179, 8, 0.3);
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .actions {
+            margin-top: 1.5rem;
+            display: flex;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Card 1: Auth Code -->
+        <div class="card">
+            <h1>Authorization Code Acquired</h1>
+            <p>The login redirect completed successfully. The OIDC authorization server generated a single-use authorization code and returned it to this client application.</p>
+            
+            <div class="section-title">Authorization Code (Query String)</div>
+            <div class="value-box" id="auth-code">Extracting code...</div>
+
+            <div class="section-title">Cached Code Verifier (PKCE local secret)</div>
+            <div class="value-box" style="color: #60a5fa;" id="code-verifier">Checking local storage...</div>
+
+            <div class="actions">
+                <button class="btn" id="exchange-btn" onclick="exchangeToken()">Exchange Code for Tokens</button>
+                <button class="btn btn-secondary" onclick="window.location.href='/'">Start Over</button>
+            </div>
+        </div>
+
+        <!-- Card 2: Tokens Display (Hidden until fetched) -->
+        <div id="tokens-card" class="card hidden">
+            <div class="section-title">
+                <span>OIDC Cryptographic Tokens</span>
+                <span class="badge-status status-success">Issued</span>
+            </div>
+            <p>The OIDC server verified the authorization code and your cached PKCE verifier. It issued the following JWT token payload:</p>
+            
+            <div class="section-title">Access Token (Bearer token for API calls)</div>
+            <div class="value-box" style="color: #34d399; font-size: 0.8rem;" id="access-token"></div>
+            
+            <div class="section-title">OIDC ID Token (User Identity Claims)</div>
+            <div class="value-box" style="color: #fbbf24; font-size: 0.8rem;" id="id-token"></div>
+
+            <div class="section-title">Refresh Token (For silent token renewal)</div>
+            <div class="value-box" style="color: #60a5fa; font-size: 0.8rem;" id="refresh-token"></div>
+
+            <div class="actions">
+                <button class="btn" onclick="fetchMcpTools()">Query Authenticated MCP Tools</button>
+            </div>
+        </div>
+
+        <!-- Card 3: MCP API Output (Hidden until queried) -->
+        <div id="mcp-card" class="card hidden">
+            <div class="section-title">
+                <span>Authenticated MCP Response</span>
+                <span class="badge-status status-success">Success</span>
+            </div>
+            <p>Executed an authenticated JSON-RPC request to the <strong>/mcp</strong> route passing the access token. The MCP server returned the following tools payload:</p>
+            <div class="json-box" id="mcp-response"></div>
+        </div>
+    </div>
+
+    <script>
+        // 1. Extract the authorization code from URL query parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        
+        const codeVerifier = localStorage.getItem("code_verifier");
+
+        document.getElementById('auth-code').innerText = code || "No code found. Please start the login flow from the portal landing page.";
+        document.getElementById('code-verifier').innerText = codeVerifier || "No cached PKCE verifier found.";
+
+        if (!code || !codeVerifier) {
+            document.getElementById('exchange-btn').disabled = true;
+        }
+
+        let activeAccessToken = "";
+
+        // 2. Swaps the authorization code + verifier for JWT Tokens
+        async function exchangeToken() {
+            const exchangeBtn = document.getElementById('exchange-btn');
+            exchangeBtn.disabled = true;
+            exchangeBtn.innerText = "Exchanging...";
+
+            const redirectUri = `${window.location.origin}/callback.html`;
+
+            try {
+                const response = await fetch("http://localhost:5000/connect/token", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded"
+                    },
+                    body: new URLSearchParams({
+                        grant_type: "authorization_code",
+                        client_id: "mcp-client",
+                        code: code,
+                        redirect_uri: redirectUri,
+                        code_verifier: codeVerifier
+                    })
+                });
+
+                if (response.ok) {
+                    const tokens = await response.json();
+                    activeAccessToken = tokens.access_token;
+                    
+                    document.getElementById('access-token').innerText = tokens.access_token;
+                    document.getElementById('id-token').innerText = tokens.id_token || "Not requested or not issued";
+                    document.getElementById('refresh-token').innerText = tokens.refresh_token || "offline_access scope missing or not granted";
+                    
+                    document.getElementById('tokens-card').classList.remove('hidden');
+                    
+                    // Scroll to the tokens card smoothly
+                    document.getElementById('tokens-card').scrollIntoView({ behavior: 'smooth' });
+                } else {
+                    const err = await response.json();
+                    alert(`Failed to exchange code: ${err.error_description || err.error}`);
+                }
+            } catch (e) {
+                alert(`Error connecting to OIDC token endpoint: ${e.message}`);
+            } finally {
+                exchangeBtn.disabled = false;
+                exchangeBtn.innerText = "Exchange Code for Tokens";
+            }
+        }
+
+        // 3. Simulates a live authenticated MCP JSON-RPC call over stateless Streamable HTTP
+        async function fetchMcpTools() {
+            try {
+                const response = await fetch("http://localhost:5000/mcp", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${activeAccessToken}`
+                    },
+                    body: JSON.stringify({
+                        jsonrpc: "2.0",
+                        method: "tools/list",
+                        id: 1
+                    })
+                });
+
+                if (response.ok) {
+                    const json = await response.json();
+                    document.getElementById('mcp-response').innerText = JSON.stringify(json, null, 4);
+                    document.getElementById('mcp-card').classList.remove('hidden');
+                    document.getElementById('mcp-card').scrollIntoView({ behavior: 'smooth' });
+                } else {
+                    alert(`MCP endpoint returned HTTP ${response.status}`);
+                }
+            } catch (e) {
+                alert(`Error executing MCP request: ${e.message}`);
+            }
+        }
+    </script>
+</body>
+</html>

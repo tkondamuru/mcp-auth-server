@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authorize Access | MCP Server</title>
+    <!-- Google Fonts: Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-gradient: radial-gradient(circle at 0% 0%, #1e1b4b 0%, #0f172a 100%);
+            --glass-bg: rgba(30, 41, 59, 0.45);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-shadow: rgba(0, 0, 0, 0.35);
+            --primary-accent: linear-gradient(135deg, #a855f7 0%, #6366f1 100%);
+            --primary-accent-hover: linear-gradient(135deg, #b55fe6 0%, #4f46e5 100%);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --error-bg: rgba(239, 68, 68, 0.15);
+            --error-border: rgba(239, 68, 68, 0.4);
+            --error-text: #fca5a5;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background: var(--bg-gradient);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Decorative ambient glowing orbs */
+        .glow-orb-1, .glow-orb-2 {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(120px);
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .glow-orb-1 {
+            width: 400px;
+            height: 400px;
+            background: rgba(168, 85, 247, 0.25);
+            top: 10%;
+            left: 15%;
+            animation: float-orb 15s infinite ease-in-out alternate;
+        }
+
+        .glow-orb-2 {
+            width: 500px;
+            height: 500px;
+            background: rgba(99, 102, 241, 0.2);
+            bottom: 10%;
+            right: 15%;
+            animation: float-orb 20s infinite ease-in-out alternate-reverse;
+        }
+
+        @keyframes float-orb {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(40px, 60px) scale(1.15); }
+        }
+
+        /* Container with fade-in and slide-up animation */
+        .login-container {
+            width: 100%;
+            max-width: 440px;
+            padding: 2.5rem;
+            z-index: 1;
+            opacity: 0;
+            transform: translateY(30px);
+            animation: slide-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes slide-up {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Glassmorphism Card styling */
+        .glass-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 3rem 2.5rem;
+            box-shadow: 0 20px 40px var(--glass-shadow);
+            text-align: center;
+        }
+
+        .card-header h1 {
+            color: var(--text-primary);
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .card-header p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            margin-bottom: 2rem;
+            font-weight: 300;
+        }
+
+        /* Error alert */
+        .error-alert {
+            display: none;
+            background: var(--error-bg);
+            border: 1px solid var(--error-border);
+            border-radius: 12px;
+            padding: 0.75rem 1rem;
+            color: var(--error-text);
+            font-size: 0.875rem;
+            margin-bottom: 1.5rem;
+            text-align: left;
+            animation: shake 0.4s ease-in-out;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-6px); }
+            40%, 80% { transform: translateX(6px); }
+        }
+
+        /* Forms inputs */
+        .form-group {
+            position: relative;
+            margin-bottom: 1.5rem;
+            text-align: left;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 1rem 1.25rem;
+            background: rgba(15, 23, 42, 0.4);
+            border: 1px solid var(--glass-border);
+            border-radius: 14px;
+            outline: none;
+            color: var(--text-primary);
+            font-size: 1rem;
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            font-weight: 400;
+        }
+
+        .form-input:focus {
+            border-color: #818cf8;
+            box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.15);
+            background: rgba(15, 23, 42, 0.6);
+        }
+
+        /* Floating label */
+        .form-label {
+            position: absolute;
+            left: 1.25rem;
+            top: 1rem;
+            color: var(--text-secondary);
+            pointer-events: none;
+            transition: all 0.25s ease;
+            transform-origin: left top;
+            font-size: 1rem;
+            font-weight: 300;
+        }
+
+        /* Label float effect */
+        .form-input:focus ~ .form-label,
+        .form-input:not(:placeholder-shown) ~ .form-label {
+            transform: translateY(-1.6rem) scale(0.8);
+            color: #a5b4fc;
+            font-weight: 500;
+        }
+
+        /* Submit Button styling */
+        .btn-submit {
+            width: 100%;
+            padding: 1rem;
+            background: var(--primary-accent);
+            border: none;
+            border-radius: 14px;
+            color: #ffffff;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(168, 85, 247, 0.25);
+            margin-top: 1rem;
+        }
+
+        .btn-submit:hover {
+            background: var(--primary-accent-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(168, 85, 247, 0.35);
+        }
+
+        .btn-submit:active {
+            transform: translateY(0);
+        }
+
+        /* Logo icon */
+        .logo-wrapper {
+            width: 56px;
+            height: 56px;
+            background: var(--primary-accent);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.5rem;
+            box-shadow: 0 8px 16px rgba(99, 102, 241, 0.3);
+        }
+
+        .logo-icon {
+            color: #ffffff;
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+    <div class="glow-orb-1"></div>
+    <div class="glow-orb-2"></div>
+
+    <div class="login-container">
+        <div class="glass-card">
+            <div class="logo-wrapper">
+                <span class="logo-icon">PGW</span>
+            </div>
+            <div class="card-header">
+                <h1>Welcome Back</h1>
+                <p>Log in to authorize your AI assistant</p>
+            </div>
+            
+            <div id="errorAlert" class="error-alert">
+                Invalid credentials. Please verify your username and password.
+            </div>
+
+            <form id="loginForm" method="POST">
+                <div class="form-group">
+                    <input type="text" id="username" name="username" class="form-input" placeholder=" " required autocomplete="username">
+                    <label for="username" class="form-label">Username</label>
+                </div>
+                
+                <div class="form-group">
+                    <input type="password" id="password" name="password" class="form-input" placeholder=" " required autocomplete="current-password">
+                    <label for="password" class="form-label">Password</label>
+                </div>
+
+                <button type="submit" class="btn-submit">Sign In & Authorize</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Setup action path with query parameters (to preserve OIDC returnUrl)
+        const currentSearch = window.location.search;
+        const loginForm = document.getElementById('loginForm');
+        loginForm.action = `/login${currentSearch}`;
+
+        // Check for error parameter to display authentication failures
+        const urlParams = new URLSearchParams(currentSearch);
+        if (urlParams.get('error') === 'invalid_credentials') {
+            document.getElementById('errorAlert').style.display = 'block';
+        }
+    </script>
+</body>
+</html>

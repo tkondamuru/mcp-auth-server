@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OIDC Client Management Panel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #8b5cf6;
+            --primary-hover: #a78bfa;
+            --danger: #ef4444;
+            --danger-hover: #f87171;
+            --background: #0f0720;
+            --card-bg: rgba(25, 15, 45, 0.45);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --input-bg: rgba(255, 255, 255, 0.04);
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: radial-gradient(circle at 50% 50%, #1e113a 0%, var(--background) 100%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+        }
+
+        .admin-container {
+            width: 100%;
+            max-width: 900px;
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
+            padding: 2.5rem;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            padding-bottom: 1.5rem;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            background: linear-gradient(to right, #c084fc, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .btn {
+            font-family: inherit;
+            font-weight: 600;
+            padding: 0.75rem 1.25rem;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.9rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 4px 14px rgba(139, 92, 246, 0.3);
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+            box-shadow: 0 4px 14px rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-danger:hover {
+            background: var(--danger-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-main);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .layout-grid {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 2rem;
+        }
+
+        .client-sidebar {
+            border-right: 1px solid rgba(255, 255, 255, 0.06);
+            padding-right: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .client-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .client-item {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 1rem;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .client-item:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .client-item.active {
+            background: rgba(139, 92, 246, 0.15);
+            border-color: var(--primary);
+        }
+
+        .client-title {
+            font-weight: 600;
+            font-size: 0.95rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .client-subtitle {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .client-editor {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        label {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+
+        input {
+            width: 100%;
+            background: var(--input-bg);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 0.85rem 1rem;
+            border-radius: 12px;
+            color: white;
+            font-family: inherit;
+            font-size: 0.95rem;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.25);
+        }
+
+        .uri-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .uri-item {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        .uri-input {
+            flex: 1;
+        }
+
+        .btn-icon {
+            padding: 0.85rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 12px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+
+        /* Modal Overlay */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 5, 20, 0.8);
+            backdrop-filter: blur(10px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-card {
+            background: #150d2a;
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            width: 100%;
+            max-width: 480px;
+            padding: 2rem;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .modal-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="admin-container">
+        <header>
+            <div>
+                <h1>PGW OIDC Client Management</h1>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Dynamically configure Client IDs and Redirect URIs</p>
+            </div>
+            <div style="display: flex; gap: 0.75rem;">
+                <button class="btn btn-secondary" onclick="openCreateModal()">+ Create Client</button>
+                <button class="btn btn-danger" onclick="logout()">Logout</button>
+            </div>
+        </header>
+
+        <div class="layout-grid">
+            <!-- Sidebar with Client List -->
+            <div class="client-sidebar">
+                <h3 style="font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-muted);">Configured Clients</h3>
+                <ul class="client-list" id="client-list">
+                    <!-- Loaded dynamically -->
+                </ul>
+            </div>
+
+            <!-- Client detail editor panel -->
+            <div class="client-editor-container">
+                <div id="editor-placeholder" class="empty-state">
+                    Select a client from the registry or create a new client to manage configuration properties.
+                </div>
+
+                <div id="editor-panel" class="client-editor" style="display: none;">
+                    <div class="form-group">
+                        <label for="edit-client-id">Client ID</label>
+                        <input type="text" id="edit-client-id" disabled style="background: rgba(255,255,255,0.02); color: var(--text-muted);">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="edit-display-name">Display Name</label>
+                        <input type="text" id="edit-display-name" placeholder="e.g. Claude Desktop Client">
+                    </div>
+
+                    <div class="form-group">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <label>Allowed Redirect URIs</label>
+                            <button class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="addUriRow('')">+ Add URI</button>
+                        </div>
+                        <ul class="uri-list" id="uri-list">
+                            <!-- Loaded dynamically -->
+                        </ul>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 1.5rem;">
+                        <button class="btn btn-danger" onclick="deleteActiveClient()">Delete Client</button>
+                        <button class="btn btn-primary" onclick="saveActiveClient()">Save Changes</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Client Modal -->
+    <div class="modal" id="create-modal">
+        <div class="modal-card">
+            <h2 class="modal-title">Register New Client</h2>
+            
+            <div class="form-group">
+                <label for="new-client-id">Client ID</label>
+                <input type="text" id="new-client-id" placeholder="e.g. my-custom-agent">
+            </div>
+
+            <div class="form-group">
+                <label for="new-display-name">Display Name</label>
+                <input type="text" id="new-display-name" placeholder="e.g. PGW Autoglass Assistant">
+            </div>
+
+            <div class="form-group">
+                <label for="new-redirect-uri">Initial Redirect URI</label>
+                <input type="text" id="new-redirect-uri" placeholder="e.g. http://localhost:8000/callback">
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeCreateModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="createClient()">Create Client</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let clientsList = [];
+        let activeClientId = null;
+
+        // Initialize
+        document.addEventListener("DOMContentLoaded", () => {
+            loadClients();
+        });
+
+        // 1. Fetch clients list
+        async function loadClients() {
+            try {
+                const response = await fetch("/admin/api/clients");
+                if (response.status === 401 || response.redirected) {
+                    window.location.href = "/login?ReturnUrl=/admin.html";
+                    return;
+                }
+                clientsList = await response.json();
+                renderClients();
+            } catch (e) {
+                alert("Error loading client registry: " + e.message);
+            }
+        }
+
+        // Render client list items in sidebar
+        function renderClients() {
+            const listEl = document.getElementById("client-list");
+            listEl.innerHTML = "";
+
+            if (clientsList.length === 0) {
+                listEl.innerHTML = `<li style="padding: 1rem; text-align: center; color: var(--text-muted); font-size: 0.85rem;">No clients seeded.</li>`;
+                return;
+            }
+
+            clientsList.forEach(client => {
+                const item = document.createElement("li");
+                item.className = `client-item ${activeClientId === client.clientId ? 'active' : ''}`;
+                item.onclick = () => selectClient(client.clientId);
+
+                item.innerHTML = `
+                    <div class="client-title">${client.clientId}</div>
+                    <div class="client-subtitle">${client.displayName} (${client.redirectUris.length} URIs)</div>
+                `;
+                listEl.appendChild(item);
+            });
+        }
+
+        // 2. Select client to edit
+        function selectClient(clientId) {
+            activeClientId = clientId;
+            renderClients();
+
+            const client = clientsList.find(c => c.clientId === clientId);
+            if (!client) return;
+
+            document.getElementById("editor-placeholder").style.display = "none";
+            document.getElementById("editor-panel").style.display = "flex";
+
+            document.getElementById("edit-client-id").value = client.clientId;
+            document.getElementById("edit-display-name").value = client.displayName;
+
+            const uriListEl = document.getElementById("uri-list");
+            uriListEl.innerHTML = "";
+            client.redirectUris.forEach(uri => addUriRow(uri));
+        }
+
+        // Add a redirect URI input row
+        function addUriRow(value) {
+            const listEl = document.getElementById("uri-list");
+            const li = document.createElement("li");
+            li.className = "uri-item";
+            li.innerHTML = `
+                <input type="text" class="uri-input" value="${value}" placeholder="e.g. http://localhost:8000/callback">
+                <button class="btn btn-danger btn-icon" onclick="this.parentElement.remove()">🗑️</button>
+            `;
+            listEl.appendChild(li);
+        }
+
+        // 3. Save Active Client edits
+        async function saveActiveClient() {
+            if (!activeClientId) return;
+
+            const displayName = document.getElementById("edit-display-name").value.trim();
+            const uriInputs = document.querySelectorAll(".uri-input");
+            const redirectUris = Array.from(uriInputs).map(inp => inp.value.trim()).filter(val => val !== "");
+
+            if (!displayName) {
+                alert("Display Name is required.");
+                return;
+            }
+
+            try {
+                const response = await fetch("/admin/api/clients/update", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        clientId: activeClientId,
+                        displayName,
+                        redirectUris
+                    })
+                });
+
+                if (response.ok) {
+                    alert("Client configurations saved successfully!");
+                    await loadClients();
+                } else {
+                    const err = await response.text();
+                    alert("Error saving client: " + err);
+                }
+            } catch (e) {
+                alert("Failed to save changes: " + e.message);
+            }
+        }
+
+        // 4. Delete active client
+        async function deleteActiveClient() {
+            if (!activeClientId) return;
+            if (!confirm(`Are you sure you want to completely delete client '${activeClientId}'?`)) return;
+
+            try {
+                const response = await fetch("/admin/api/clients/delete", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ clientId: activeClientId })
+                });
+
+                if (response.ok) {
+                    alert("Client deleted successfully.");
+                    activeClientId = null;
+                    document.getElementById("editor-panel").style.display = "none";
+                    document.getElementById("editor-placeholder").style.display = "block";
+                    await loadClients();
+                } else {
+                    const err = await response.text();
+                    alert("Error deleting client: " + err);
+                }
+            } catch (e) {
+                alert("Failed to delete client: " + e.message);
+            }
+        }
+
+        // 5. Create new client modal
+        function openCreateModal() {
+            document.getElementById("new-client-id").value = "";
+            document.getElementById("new-display-name").value = "";
+            document.getElementById("new-redirect-uri").value = "";
+            document.getElementById("create-modal").classList.add("open");
+        }
+
+        function closeCreateModal() {
+            document.getElementById("create-modal").classList.remove("open");
+        }
+
+        async function createClient() {
+            const clientId = document.getElementById("new-client-id").value.trim();
+            const displayName = document.getElementById("new-display-name").value.trim();
+            const redirectUri = document.getElementById("new-redirect-uri").value.trim();
+
+            if (!clientId || !displayName) {
+                alert("Client ID and Display Name are required.");
+                return;
+            }
+
+            const redirectUris = redirectUri ? [redirectUri] : [];
+
+            try {
+                const response = await fetch("/admin/api/clients/create", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ clientId, displayName, redirectUris })
+                });
+
+                if (response.ok) {
+                    alert("Client created successfully!");
+                    closeCreateModal();
+                    await loadClients();
+                    selectClient(clientId);
+                } else {
+                    const err = await response.text();
+                    alert("Error creating client: " + err);
+                }
+            } catch (e) {
+                alert("Failed to create client: " + e.message);
+            }
+        }
+
+        // Logout
+        function logout() {
+            document.cookie = ".AspNetCore.Cookies=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+            window.location.href = "/login";
+        }
+    </script>
+</body>
+</html>
