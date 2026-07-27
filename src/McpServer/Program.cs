@@ -31,6 +31,33 @@ builder.WebHost.UseUrls("http://localhost:5000");
 // Helper to locate files robustly (certificates, wwwroot/login.html, etc.)
 string FindFilePath(string filename)
 {
+    // Check direct certificate path env var
+    var envCertPath = Environment.GetEnvironmentVariable("CERTIFICATE_PATH");
+    if (!string.IsNullOrEmpty(envCertPath) && filename.Contains("pgwintraapps"))
+    {
+        if (Directory.Exists(envCertPath))
+        {
+            var targetPath = Path.Combine(envCertPath, filename);
+            if (File.Exists(targetPath)) return targetPath;
+        }
+        else if (File.Exists(envCertPath) && envCertPath.EndsWith(Path.GetExtension(filename), StringComparison.OrdinalIgnoreCase))
+        {
+            return envCertPath;
+        }
+    }
+
+    // Check database path directory (since it is mounted on /data)
+    var envDbPath = Environment.GetEnvironmentVariable("DATABASE_PATH");
+    if (!string.IsNullOrEmpty(envDbPath))
+    {
+        var dbDir = Path.GetDirectoryName(envDbPath);
+        if (!string.IsNullOrEmpty(dbDir))
+        {
+            var targetPath = Path.Combine(dbDir, filename);
+            if (File.Exists(targetPath)) return targetPath;
+        }
+    }
+
     var path1 = Path.Combine(builder.Environment.ContentRootPath, filename);
     if (File.Exists(path1)) return path1;
     
