@@ -26,7 +26,7 @@ using McpServer.Mcp;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.WebHost.UseUrls("http://localhost:5000");
+builder.WebHost.UseUrls("http://0.0.0.0:5000");
 
 // Helper to locate files robustly (certificates, wwwroot/login.html, etc.)
 string FindFilePath(string filename)
