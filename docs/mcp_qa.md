@@ -342,6 +342,31 @@ The MCP Inspector supports running the OIDC authorization code flow natively. Ho
     *   **Redirect URL:** `http://localhost:6274/oauth/`
     *   **Scope:** `openid profile mcp offline_access`
 
+---
+
+### Q11: Does Cloudflare Tunnel support the persistent "duplex" streaming required for the MCP SSE transport channel?
+
+**Yes, Cloudflare Tunnels fully support long-lived HTTP streams, Server-Sent Events (SSE), and persistent connections.**
+
+However, because Cloudflare acts as an optimizing reverse proxy, you must understand how it handles buffering and idle timeouts:
+
+#### 1. Real-Time Streaming (Bypassing Buffering)
+Cloudflare normally buffers HTTP responses to optimize page load speeds. However, for MCP Server-Sent Events (SSE), events must stream to the client instantly without buffering.
+*   *How it is handled:* Our server sets the standard HTTP response headers:
+    ```http
+    Content-Type: text/event-stream
+    Cache-Control: no-cache
+    ```
+    Cloudflare automatically detects these headers and disables response buffering, allowing events to pass through the tunnel in real-time.
+
+#### 2. Idle Connection Timeouts (100-Second Rule)
+Cloudflare has a strict **100-second idle timeout** limit. If a persistent HTTP connection (like our GET `/mcp` EventSource channel) does not transmit any data for 100 seconds, Cloudflare terminates it with a `524 Origin Time-out` error.
+*   *How we prevent this:* The MCP protocol incorporates **Heartbeats/Pings**. Our C# EventSource implementation runs a background loop that regularly transmits ping comment lines (`:\n\n` or `event: ping`) to the client. This continuous transmission resets Cloudflare's 100-second idle timer, keeping the tunnel connection alive indefinitely.
+
+#### 3. Client-to-Server Upstream (POST Requests)
+Since MCP SSE transport decouples the channels (GET for server streaming to client, and separate POSTs for client writing back to server), Cloudflare processes the POST requests as normal, stateless HTTP calls. The proxy does not need to handle complex, low-level duplexing states, making it extremely robust and easy to scale.
+
+
 
 
 

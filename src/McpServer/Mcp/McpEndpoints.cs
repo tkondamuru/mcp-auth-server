@@ -57,11 +57,24 @@ namespace McpServer.Mcp
 
                 try
                 {
-                    while (await channel.Reader.WaitToReadAsync(context.RequestAborted))
+                    while (!context.RequestAborted.IsCancellationRequested)
                     {
-                        while (channel.Reader.TryRead(out var message))
+                        var readTask = channel.Reader.WaitToReadAsync(context.RequestAborted).AsTask();
+                        var delayTask = Task.Delay(TimeSpan.FromSeconds(15), context.RequestAborted);
+
+                        var completedTask = await Task.WhenAny(readTask, delayTask);
+                        if (completedTask == readTask && await readTask)
                         {
-                            await context.Response.WriteAsync(message);
+                            while (channel.Reader.TryRead(out var message))
+                            {
+                                await context.Response.WriteAsync(message);
+                                await context.Response.Body.FlushAsync();
+                            }
+                        }
+                        else
+                        {
+                            // Send a keep-alive comment (":\n\n") to prevent proxy connection timeouts
+                            await context.Response.WriteAsync(":\n\n");
                             await context.Response.Body.FlushAsync();
                         }
                     }
