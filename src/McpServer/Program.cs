@@ -68,7 +68,8 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 // If running in Azure App Service, ensure SQLite database file resides on the persistent network volume
 if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_INSTANCE_ID")))
 {
-    connectionString = "Data Source=/home/mcp.db";
+    var homeDir = Environment.GetEnvironmentVariable("HOME") ?? "/home";
+    connectionString = $"Data Source={Path.Combine(homeDir, "mcp.db")}";
 }
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
