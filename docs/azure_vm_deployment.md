@@ -7,9 +7,8 @@ This document tracks the deployment of the PGW OIDC MCP server to an Azure Virtu
 ## Progress Tracker
 
 - `[x]` Step 1: Create Resource Group & Ubuntu Virtual Machine
-- `[/]` Step 2: Configure Public DNS Name & Open Network Ports (80/443)
-- `[ ]` Step 3: Connect via SSH & Install Docker
-- `[ ]` Step 4: Clone Code, Build Container, and Run with SQLite Persistence
+- `[x]` Step 3: Connect via SSH & Install Docker
+- `[/]` Step 4: Clone Code, Build Container, and Run with SQLite Persistence
 - `[ ]` Step 5: Install Nginx, Set Up Reverse Proxy, and Bind SSL with Certbot
 
 ---
@@ -49,7 +48,7 @@ az vm create \
 
 ---
 
-## Step 2: Configure Public DNS Name & Network Ports
+## Step 2: Configure Public DNS Name & Network Ports [COMPLETE]
 
 In this step, we will configure a public DNS label for your public IP and open ports 80/443 so your application is reachable from the web.
 
@@ -79,5 +78,87 @@ az vm open-port \
   --resource-group rg-mcp-apps \
   --name vm-mcp-server \
   --port 80,443 \
-  --priority 1000
+  --priority 1010
 ```
+
+---
+
+## Step 3: Connect via SSH & Install Docker [COMPLETE]
+
+Now we will connect to the VM using SSH and install Docker.
+
+### 1. Connect via SSH
+Run this command in the same Cloud Shell where you created the VM (the SSH private key `id_rsa` is already stored in your Cloud Shell's local directory):
+```bash
+ssh azureuser@mcp-server-kondulabs.eastus2.cloudapp.azure.com
+```
+*Type `yes` when prompted to verify the host authenticity.*
+
+### 2. Install Docker
+Once logged into the VM, run the following commands to install Docker:
+```bash
+# Update local packages list
+sudo apt-get update
+
+# Install Docker
+sudo apt-get install -y docker.io
+
+# Enable and start the Docker daemon
+sudo systemctl enable --now docker
+
+# Test Docker installation
+sudo docker --version
+```
+
+> [!TIP]
+> **What happens if I close Cloud Shell or lose my keys?**
+> 1. **Keys are Persistent:** Azure Cloud Shell mounts a persistent Azure File Share under `/home/<username>`. Your generated SSH keys inside `~/.ssh/` are saved on this share and will **not** be lost when you close the session.
+> 2. **Connecting from local PC:** You can download your private key file from Cloud Shell (using the "Upload/Download" button in the Cloud Shell toolbar) to your local PC.
+> 3. **Resetting Credentials:** If you ever lose your keys entirely, you can reset them without rebuilds. In the Azure Portal, navigate to your **Virtual Machine** -> scroll down to the **Help** section -> click **Reset password** -> select **Reset SSH public key** (or reset password) to write new login credentials to the VM.
+
+---
+
+## Step 4: Clone Code, Build Container, and Run
+
+Now we will clone the repository on the VM, compile it into a Docker image, and run the container with persistent storage for SQLite.
+
+### 1. Clone the GitHub Repository
+Run this on your VM to clone your repository:
+```bash
+git clone https://github.com/tkondamuru/mcp-auth-server.git
+cd mcp-auth-server
+```
+
+### 2. Build the Docker Image
+Compile and build the application inside Docker:
+```bash
+sudo docker build -t mcp-server .
+```
+
+> [!NOTE]
+> **Docker Layer Caching:**
+> The initial build takes 1-2 minutes to download base SDKs and restore dependencies. Subsequent builds are extremely fast (10-15 seconds) because Docker caches the SDK layers and NuGet package restorations, only rebuilding modified source code files.
+
+### 3. Run the Container with Volume Persistence
+Create a storage directory `/data` on the VM host. We will map this directory to the container so that your SQLite database `mcp.db` survives container updates and restarts:
+```bash
+# Create directory on the host machine
+sudo mkdir -p /data
+
+# Run the container in background
+sudo docker run -d \
+  -p 5000:80 \
+  -v /data:/app/data \
+  -e DATABASE_PATH=/app/data/mcp.db \
+  --restart unless-stopped \
+  --name mcp-app \
+  mcp-server
+```
+
+### 4. Verify Local Connection
+Verify that the .NET app is successfully running inside Docker and responding on port 5000:
+```bash
+curl -I http://localhost:5000
+```
+*(Should return HTTP 200 OK headers).*
+

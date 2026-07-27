@@ -366,6 +366,55 @@ Cloudflare has a strict **100-second idle timeout** limit. If a persistent HTTP 
 #### 3. Client-to-Server Upstream (POST Requests)
 Since MCP SSE transport decouples the channels (GET for server streaming to client, and separate POSTs for client writing back to server), Cloudflare processes the POST requests as normal, stateless HTTP calls. The proxy does not need to handle complex, low-level duplexing states, making it extremely robust and easy to scale.
 
+---
+
+### Q12: How is the persistent SSE keep-alive heartbeat ping loop implemented in C#?
+
+To prevent intermediate proxies (like Cloudflare or AWS App Runner) from closing the EventSource stream during periods of inactivity, we implement a **heartbeat ping loop** using asynchronous racing in C#.
+
+#### 1. Code Implementation
+Inside the `GET /mcp` connection endpoint, instead of blocking indefinitely on the channel reader, we use **`Task.WhenAny`** to race a read check against a 15-second delay:
+
+```csharp
+try
+{
+    while (!context.RequestAborted.IsCancellationRequested)
+    {
+        // Race: Wait for either a new message or a 15-second timeout
+        var readTask = channel.Reader.WaitToReadAsync(context.RequestAborted).AsTask();
+        var delayTask = Task.Delay(TimeSpan.FromSeconds(15), context.RequestAborted);
+
+        var completedTask = await Task.WhenAny(readTask, delayTask);
+        
+        if (completedTask == readTask && await readTask)
+        {
+            // A message was received from the queue; write it to the stream
+            while (channel.Reader.TryRead(out var message))
+            {
+                await context.Response.WriteAsync(message);
+                await context.Response.Body.FlushAsync();
+            }
+        }
+        else
+        {
+            // Heartbeat: Send an SSE comment line to keep the connection alive
+            await context.Response.WriteAsync(":\n\n");
+            await context.Response.Body.FlushAsync();
+        }
+    }
+}
+catch (OperationCanceledException)
+{
+    // Connection was closed by the client; exit gracefully
+}
+```
+
+#### 2. Why this works:
+*   **The SSE Comment Format (`:\n\n`):** In the Server-Sent Events specification, lines starting with a colon (`:`) are treated as comment blocks. The browser's native `EventSource` parser ignores comments, meaning it won't raise any empty message events to your JavaScript code.
+*   **Preventing Timeout Errors:** Because the server transmits 3 bytes (`:\n\n`) every 15 seconds, the connection never appears "idle" to reverse proxies, avoiding HTTP `524 Gateway Timeout` errors.
+*   **Graceful Cancellation:** Passing `context.RequestAborted` to both `WaitToReadAsync` and `Task.Delay` guarantees that as soon as the client disconnects, all tasks terminate immediately, preventing memory leaks.
+
+
 
 
 
