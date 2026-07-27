@@ -65,8 +65,13 @@ string FindFilePath(string filename)
 // 1. Configure EF Core SQLite Database for OpenIddict State (clients, tokens, scopes)
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=mcp.db";
 
-// If running in Azure App Service, ensure SQLite database file resides on the persistent network volume
-if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_INSTANCE_ID")))
+// If running in cloud containers (e.g. Render, ACA) or Azure App Service, ensure SQLite database path is configurable
+var envDbPath = Environment.GetEnvironmentVariable("DATABASE_PATH");
+if (!string.IsNullOrEmpty(envDbPath))
+{
+    connectionString = $"Data Source={envDbPath}";
+}
+else if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_INSTANCE_ID")))
 {
     var homeDir = Environment.GetEnvironmentVariable("HOME") ?? "/home";
     connectionString = $"Data Source={Path.Combine(homeDir, "mcp.db")}";
