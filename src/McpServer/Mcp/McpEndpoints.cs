@@ -37,21 +37,28 @@ namespace McpServer.Mcp
 
                     if (!string.IsNullOrEmpty(apiKey))
                     {
-                        var dbContext = context.RequestServices.GetRequiredService<ApplicationDbContext>();
-                        var devKey = dbContext.DeveloperKeys
-                            .FirstOrDefault(k => k.Key == apiKey && k.ExpiresAt > DateTime.UtcNow);
-
-                        if (devKey != null)
+                        try
                         {
-                            // Synthesize authenticated claims principal for this username
-                            var identity = new System.Security.Claims.ClaimsIdentity(
-                                new[]
-                                {
-                                    new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, devKey.Username),
-                                    new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, devKey.Username)
-                                },
-                                "ApiKeyAuth");
-                            context.User = new System.Security.Claims.ClaimsPrincipal(identity);
+                            var dbContext = context.RequestServices.GetRequiredService<ApplicationDbContext>();
+                            var devKey = dbContext.DeveloperKeys
+                                .FirstOrDefault(k => k.Key == apiKey && k.ExpiresAt > DateTime.UtcNow);
+
+                            if (devKey != null)
+                            {
+                                // Synthesize authenticated claims principal using the specific scheme expected by the endpoint authorization
+                                var identity = new System.Security.Claims.ClaimsIdentity(
+                                    new[]
+                                    {
+                                        new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, devKey.Username),
+                                        new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, devKey.Username)
+                                    },
+                                    OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
+                                context.User = new System.Security.Claims.ClaimsPrincipal(identity);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[WARNING] Failed to query DeveloperKeys database table: {ex.Message}");
                         }
                     }
                 }
