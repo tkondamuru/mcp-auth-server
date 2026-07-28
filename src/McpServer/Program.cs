@@ -119,10 +119,11 @@ builder.Services.AddOpenIddict()
     })
     .AddServer(options =>
     {
-        // Define standard OIDC endpoints
+        // Define standard OIDC endpoints & set lifespan to 7 days
         options.SetAuthorizationEndpointUris("/connect/authorize")
                .SetTokenEndpointUris("/connect/token")
-               .SetUserInfoEndpointUris("/connect/userinfo");
+               .SetUserInfoEndpointUris("/connect/userinfo")
+               .SetAccessTokenLifetime(TimeSpan.FromDays(7));
 
         // Allow flows
         options.AllowAuthorizationCodeFlow()
@@ -535,6 +536,74 @@ app.MapPost("/admin/api/clients/delete", async (DeleteClientRequest request, Ope
 })
 .RequireAuthorization(new AuthorizeAttribute { AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme });
 
+// --- Administrative API Endpoints for Developer Keys ---
+app.MapGet("/admin/api/keys", async (ApplicationDbContext dbContext) =>
+{
+    var keys = await dbContext.DeveloperKeys
+        .OrderByDescending(k => k.CreatedAt)
+        .Select(k => new {
+            id = k.Id,
+            key = k.Key,
+            username = k.Username,
+            createdAt = k.CreatedAt,
+            expiresAt = k.ExpiresAt,
+            isExpired = k.ExpiresAt <= DateTime.UtcNow
+        })
+        .ToListAsync();
+    return Results.Json(keys);
+})
+.RequireAuthorization(new AuthorizeAttribute { AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme });
+
+app.MapPost("/admin/api/keys/generate", async (GenerateKeyRequest request, ApplicationDbContext dbContext) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Username))
+    {
+        return Results.BadRequest("Username is required.");
+    }
+
+    // Generate a cryptographically secure 32-character key
+    var secureKey = "mcp_dev_" + Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N").Substring(0, 8);
+
+    var developerKey = new DeveloperKey
+    {
+        Key = secureKey,
+        Username = request.Username,
+        CreatedAt = DateTime.UtcNow,
+        ExpiresAt = DateTime.UtcNow.AddDays(7) // Lifeline of 7 days
+    };
+
+    dbContext.DeveloperKeys.Add(developerKey);
+    await dbContext.SaveChangesAsync();
+
+    return Results.Ok(new {
+        id = developerKey.Id,
+        key = developerKey.Key,
+        username = developerKey.Username,
+        expiresAt = developerKey.ExpiresAt
+    });
+})
+.RequireAuthorization(new AuthorizeAttribute { AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme });
+
+app.MapPost("/admin/api/keys/revoke", async (RevokeKeyRequest request, ApplicationDbContext dbContext) =>
+{
+    if (string.IsNullOrWhiteSpace(request.KeyId))
+    {
+        return Results.BadRequest("Key ID is required.");
+    }
+
+    var key = await dbContext.DeveloperKeys.FindAsync(request.KeyId);
+    if (key == null)
+    {
+        return Results.NotFound();
+    }
+
+    dbContext.DeveloperKeys.Remove(key);
+    await dbContext.SaveChangesAsync();
+
+    return Results.Ok();
+})
+.RequireAuthorization(new AuthorizeAttribute { AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme });
+
 // Map static admin page and secure it
 app.MapGet("/admin.html", async (HttpContext context) =>
 {
@@ -552,7 +621,9 @@ app.MapGet("/", () => Results.Text("PGW OIDC MCP Authentication Server running. 
 
 app.Run();
 
-// DTOs for client management
+// DTOs for client and key management
 public record CreateClientRequest(string ClientId, string DisplayName, List<string> RedirectUris);
 public record UpdateClientRequest(string ClientId, string DisplayName, List<string> RedirectUris);
 public record DeleteClientRequest(string ClientId);
+public record GenerateKeyRequest(string Username);
+public record RevokeKeyRequest(string KeyId);

@@ -280,6 +280,101 @@
             gap: 0.75rem;
             margin-top: 1rem;
         }
+
+        /* Tabs styles */
+        .tabs-container {
+            display: flex;
+            gap: 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            padding-bottom: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-family: inherit;
+            font-size: 1rem;
+            font-weight: 600;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            position: relative;
+            transition: color 0.2s ease;
+        }
+
+        .tab-btn:hover {
+            color: var(--text-main);
+        }
+
+        .tab-btn.active {
+            color: var(--primary-hover);
+        }
+
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: -0.5rem;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--primary);
+            border-radius: 3px 3px 0 0;
+        }
+
+        /* Keys panel styles */
+        .keys-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            margin-top: 1rem;
+        }
+
+        .keys-table-container {
+            overflow-x: auto;
+            width: 100%;
+        }
+
+        .keys-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.9rem;
+        }
+
+        .keys-table th {
+            color: var(--text-muted);
+            font-weight: 600;
+            padding: 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .keys-table td {
+            padding: 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            vertical-align: middle;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-success {
+            background: rgba(16, 185, 129, 0.15);
+            color: #10b981;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .badge-danger {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
     </style>
 </head>
 <body>
@@ -287,16 +382,22 @@
     <div class="admin-container">
         <header>
             <div>
-                <h1>PGW OIDC Client Management</h1>
-                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Dynamically configure Client IDs and Redirect URIs</p>
+                <h1>PGW MCP & OIDC Portal</h1>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Dynamically configure Client registrations and Developer API Keys</p>
             </div>
             <div style="display: flex; gap: 0.75rem;">
-                <button class="btn btn-secondary" onclick="openCreateModal()">+ Create Client</button>
+                <button class="btn btn-secondary" id="header-create-client-btn" onclick="openCreateModal()">+ Create Client</button>
                 <button class="btn btn-danger" onclick="logout()">Logout</button>
             </div>
         </header>
 
-        <div class="layout-grid">
+        <div class="tabs-container">
+            <button class="tab-btn active" id="tab-btn-clients" onclick="switchTab('clients')">OIDC Clients</button>
+            <button class="tab-btn" id="tab-btn-keys" onclick="switchTab('keys')">Developer Keys</button>
+        </div>
+
+        <!-- Tab 1: Clients content -->
+        <div id="tab-clients-content" class="layout-grid">
             <!-- Sidebar with Client List -->
             <div class="client-sidebar">
                 <h3 style="font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-muted);">Configured Clients</h3>
@@ -339,6 +440,31 @@
                 </div>
             </div>
         </div>
+
+        <!-- Tab 2: Keys content -->
+        <div id="tab-keys-content" style="display: none;">
+            <div class="keys-header">
+                <h3 style="font-size: 1.1rem; color: var(--text-main);">Developer API Keys</h3>
+                <button class="btn btn-primary" onclick="openGenerateKeyModal()">+ Generate Developer Key</button>
+            </div>
+            <div class="keys-table-container">
+                <table class="keys-table">
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>API Key</th>
+                            <th>Created At</th>
+                            <th>Expires At</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="keys-tbody">
+                        <!-- Loaded dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 
     <!-- Create Client Modal -->
@@ -368,14 +494,200 @@
         </div>
     </div>
 
+    <!-- Generate Key Modal -->
+    <div class="modal" id="generate-key-modal">
+        <div class="modal-card">
+            <h2 class="modal-title">Generate Developer Key</h2>
+            
+            <div class="form-group" id="generate-key-input-group">
+                <label for="key-username">Associated Username</label>
+                <input type="text" id="key-username" placeholder="e.g. TJ">
+            </div>
+
+            <div class="form-group" id="generate-key-result-group" style="display: none;">
+                <label>Generated Key (Copy this now - it won't be shown again!)</label>
+                <div style="display: flex; gap: 0.5rem; align-items: center; background: rgba(255,255,255,0.05); padding: 0.75rem; border-radius: 8px;">
+                    <code id="generated-key-val" style="color: #c084fc; font-family: monospace; font-size: 0.95rem; word-break: break-all; flex-grow: 1;"></code>
+                    <button class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="copyGeneratedKey()">Copy</button>
+                </div>
+            </div>
+
+            <div class="modal-actions" id="generate-key-actions">
+                <button class="btn btn-secondary" onclick="closeGenerateKeyModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="generateKey()">Generate</button>
+            </div>
+            <div class="modal-actions" id="generate-key-result-actions" style="display: none;">
+                <button class="btn btn-primary" onclick="closeGenerateKeyModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let clientsList = [];
         let activeClientId = null;
 
+        let activeTab = "clients";
+        let keysList = [];
+
         // Initialize
         document.addEventListener("DOMContentLoaded", () => {
             loadClients();
+            loadKeys();
         });
+
+        // Tab switcher
+        function switchTab(tabName) {
+            activeTab = tabName;
+            
+            const btnClients = document.getElementById("tab-btn-clients");
+            const btnKeys = document.getElementById("tab-btn-keys");
+            const contentClients = document.getElementById("tab-clients-content");
+            const contentKeys = document.getElementById("tab-keys-content");
+            const headerCreateClientBtn = document.getElementById("header-create-client-btn");
+
+            if (tabName === "clients") {
+                btnClients.classList.add("active");
+                btnKeys.classList.remove("active");
+                contentClients.style.display = "grid";
+                contentKeys.style.display = "none";
+                headerCreateClientBtn.style.display = "inline-flex";
+            } else {
+                btnClients.classList.remove("active");
+                btnKeys.classList.add("active");
+                contentClients.style.display = "none";
+                contentKeys.style.display = "block";
+                headerCreateClientBtn.style.display = "none";
+                loadKeys();
+            }
+        }
+
+        // --- Developer Key Management functions ---
+        async function loadKeys() {
+            try {
+                const response = await fetch("/admin/api/keys");
+                if (response.ok) {
+                    keysList = await response.json();
+                    renderKeys();
+                }
+            } catch (e) {
+                console.error("Failed to load developer keys: ", e);
+            }
+        }
+
+        function renderKeys() {
+            const tbody = document.getElementById("keys-tbody");
+            tbody.innerHTML = "";
+
+            if (keysList.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">No developer keys active. Generate a key to connect custom clients statically.</td>
+                    </tr>`;
+                return;
+            }
+
+            keysList.forEach(key => {
+                const tr = document.createElement("tr");
+                const createdStr = new Date(key.createdAt).toLocaleString();
+                const expiresStr = new Date(key.expiresAt).toLocaleString();
+                const statusBadge = key.isExpired 
+                    ? `<span class="badge badge-danger">Expired</span>` 
+                    : `<span class="badge badge-success">Active</span>`;
+
+                tr.innerHTML = `
+                    <td style="font-weight: 500;">${key.username}</td>
+                    <td>
+                        <span style="font-family: monospace; color: var(--text-muted); background: rgba(255,255,255,0.02); padding: 0.25rem 0.5rem; border-radius: 4px;">
+                            ${key.key.substring(0, 12)}...
+                        </span>
+                    </td>
+                    <td style="color: var(--text-muted); font-size: 0.8rem;">${createdStr}</td>
+                    <td style="color: var(--text-muted); font-size: 0.8rem;">${expiresStr}</td>
+                    <td>${statusBadge}</td>
+                    <td>
+                        <button class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="revokeKey('${key.id}')">Revoke</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function openGenerateKeyModal() {
+            document.getElementById("generate-key-input-group").style.display = "block";
+            document.getElementById("generate-key-result-group").style.display = "none";
+            document.getElementById("generate-key-actions").style.display = "flex";
+            document.getElementById("generate-key-result-actions").style.display = "none";
+            document.getElementById("key-username").value = "";
+            document.getElementById("generate-key-modal").classList.add("open");
+        }
+
+        function closeGenerateKeyModal() {
+            document.getElementById("generate-key-modal").classList.remove("open");
+            loadKeys();
+        }
+
+        async function generateKey() {
+            const username = document.getElementById("key-username").value.trim();
+            if (!username) {
+                alert("Username is required.");
+                return;
+            }
+
+            try {
+                const response = await fetch("/admin/api/keys/generate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username })
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    document.getElementById("generated-key-val").innerText = result.key;
+                    
+                    document.getElementById("generate-key-input-group").style.display = "none";
+                    document.getElementById("generate-key-result-group").style.display = "block";
+                    document.getElementById("generate-key-actions").style.display = "none";
+                    document.getElementById("generate-key-result-actions").style.display = "flex";
+                } else {
+                    const err = await response.text();
+                    alert("Failed to generate key: " + err);
+                }
+            } catch (e) {
+                alert("Error: " + e.message);
+            }
+        }
+
+        function copyGeneratedKey() {
+            const keyText = document.getElementById("generated-key-val").innerText;
+            navigator.clipboard.writeText(keyText).then(() => {
+                alert("API Key copied to clipboard!");
+            }).catch(err => {
+                alert("Failed to copy key: " + err);
+            });
+        }
+
+        async function revokeKey(keyId) {
+            if (!confirm("Are you sure you want to revoke this developer API key? Clients using this key will immediately lose access.")) {
+                return;
+            }
+
+            try {
+                const response = await fetch("/admin/api/keys/revoke", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ keyId })
+                });
+
+                if (response.ok) {
+                    loadKeys();
+                } else {
+                    const err = await response.text();
+                    alert("Failed to revoke key: " + err);
+                }
+            } catch (e) {
+                alert("Error: " + e.message);
+            }
+        }
 
         // 1. Fetch clients list
         async function loadClients() {

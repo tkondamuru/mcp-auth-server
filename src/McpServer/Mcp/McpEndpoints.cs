@@ -1,9 +1,13 @@
+using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.Extensions.DependencyInjection;
 using OpenIddict.Validation.AspNetCore;
+using McpServer.Data;
 
 namespace McpServer.Mcp
 {
@@ -24,21 +28,31 @@ namespace McpServer.Mcp
                         context.Request.Headers.Authorization = $"Bearer {token}";
                     }
 
-                    // 2. Check for static API key bypass (X-Api-Key header or api_key query param)
+                    // 2. Check for developer key in DB (X-Api-Key header or api_key query param)
                     var apiKey = context.Request.Headers["X-Api-Key"].ToString();
                     if (string.IsNullOrEmpty(apiKey))
                     {
                         apiKey = context.Request.Query["api_key"].ToString();
                     }
 
-                    var expectedKey = Environment.GetEnvironmentVariable("MCP_API_KEY");
-                    if (!string.IsNullOrEmpty(expectedKey) && apiKey == expectedKey)
+                    if (!string.IsNullOrEmpty(apiKey))
                     {
-                        // Synthesize an authenticated claims principal to bypass OIDC validation check
-                        var identity = new System.Security.Claims.ClaimsIdentity(
-                            new[] { new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, "ApiKeyUser") },
-                            "ApiKeyAuth");
-                        context.User = new System.Security.Claims.ClaimsPrincipal(identity);
+                        var dbContext = context.RequestServices.GetRequiredService<ApplicationDbContext>();
+                        var devKey = dbContext.DeveloperKeys
+                            .FirstOrDefault(k => k.Key == apiKey && k.ExpiresAt > DateTime.UtcNow);
+
+                        if (devKey != null)
+                        {
+                            // Synthesize authenticated claims principal for this username
+                            var identity = new System.Security.Claims.ClaimsIdentity(
+                                new[]
+                                {
+                                    new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, devKey.Username),
+                                    new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, devKey.Username)
+                                },
+                                "ApiKeyAuth");
+                            context.User = new System.Security.Claims.ClaimsPrincipal(identity);
+                        }
                     }
                 }
                 await next();
