@@ -208,7 +208,7 @@ namespace McpServer.Mcp
                         new
                         {
                             name = "get_customer_info",
-                            description = "Returns details about the specified customer code.",
+                            description = "Returns PGW Auto Glass customer information and account details for a specified customer code.",
                             inputSchema = new
                             {
                                 type = "object",

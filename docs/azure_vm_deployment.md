@@ -7,9 +7,10 @@ This document tracks the deployment of the PGW OIDC MCP server to an Azure Virtu
 ## Progress Tracker
 
 - `[x]` Step 1: Create Resource Group & Ubuntu Virtual Machine
+- `[x]` Step 2: Configure Public DNS Name & Open Network Ports (80/443)
 - `[x]` Step 3: Connect via SSH & Install Docker
-- `[/]` Step 4: Clone Code, Build Container, and Run with SQLite Persistence
-- `[ ]` Step 5: Install Nginx, Set Up Reverse Proxy, and Bind SSL with Certbot
+- `[x]` Step 4: Clone Code, Build Container, and Run with SQLite Persistence
+- `[x]` Step 5: Install Nginx, Set Up Reverse Proxy, and Bind SSL with Certbot
 
 ---
 
@@ -112,9 +113,17 @@ sudo docker --version
 
 > [!TIP]
 > **What happens if I close Cloud Shell or lose my keys?**
-> 1. **Keys are Persistent:** Azure Cloud Shell mounts a persistent Azure File Share under `/home/<username>`. Your generated SSH keys inside `~/.ssh/` are saved on this share and will **not** be lost when you close the session.
-> 2. **Connecting from local PC:** You can download your private key file from Cloud Shell (using the "Upload/Download" button in the Cloud Shell toolbar) to your local PC.
-> 3. **Resetting Credentials:** If you ever lose your keys entirely, you can reset them without rebuilds. In the Azure Portal, navigate to your **Virtual Machine** -> scroll down to the **Help** section -> click **Reset password** -> select **Reset SSH public key** (or reset password) to write new login credentials to the VM.
+> 1. **Option A: Enable Password Authentication (Recommended):** Instead of keys, you can set a permanent password for the `azureuser` login on the VM. In the Azure CLI/Cloud Shell, run:
+>    ```bash
+>    az vm user update \
+>      --resource-group rg-mcp-apps \
+>      --name vm-mcp-server \
+>      --username azureuser \
+>      --password 'YourSecurePassword123!!'
+>    ```
+>    *Warning: Wrap your password in **single quotes `'`** to prevent bash from expanding exclamation marks (`!` or `!!`) as command history expansions.*
+> 2. **Option B: Use SSH Keys:** Keys inside `~/.ssh/` survive Cloud Shell restarts if you have linked Cloud Shell to an Azure Storage account file share.
+> 3. **Resetting/Recovering:** If you are locked out, run the `az vm user update` command above from any active Cloud Shell to reset your credentials.
 
 ---
 
@@ -147,7 +156,7 @@ sudo mkdir -p /data
 
 # Run the container in background
 sudo docker run -d \
-  -p 5000:80 \
+  -p 5000:5000 \
   -v /data:/app/data \
   -e DATABASE_PATH=/app/data/mcp.db \
   --restart unless-stopped \
@@ -162,3 +171,70 @@ curl -I http://localhost:5000
 ```
 *(Should return HTTP 200 OK headers).*
 
+---
+
+## Step 5: Install Nginx, Set Up Reverse Proxy, and Bind SSL with Certbot
+
+To expose the application securely over HTTPS (which is required by OIDC clients), we will configure Nginx as a reverse proxy and request a free SSL certificate from Let's Encrypt.
+
+### 1. Install Nginx and Certbot
+Run this command on your VM to install Nginx, Certbot, and the Nginx plugin:
+```bash
+sudo apt-get update
+sudo apt-get install -y nginx certbot python3-certbot-nginx
+```
+
+### 2. Configure Nginx Reverse Proxy
+Edit the default Nginx site configuration:
+```bash
+sudo nano /etc/nginx/sites-available/default
+```
+
+Wipe the default contents and paste the following server block configuration (replace `mcp-server-kondulabs.eastus2.cloudapp.azure.com` with your actual DNS domain):
+
+```nginx
+server {
+    listen 80;
+    server_name mcp-server-kondulabs.eastus2.cloudapp.azure.com;
+
+    location / {
+        proxy_pass http://localhost:5000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded-for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # SSE Keep-Alive and Buffering Disables (Critical for MCP streaming channels)
+        proxy_set_header Connection '';
+        proxy_http_version 1.1;
+        chunked_transfer_encoding off;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 24h;
+    }
+}
+```
+
+### 3. Verify Nginx Configuration & Restart
+Test that your configuration file contains no syntax errors, then restart Nginx:
+```bash
+# Test syntax
+sudo nginx -t
+
+# Restart the service
+sudo systemctl restart nginx
+```
+
+### 4. Bind Let's Encrypt SSL
+Run Certbot to fetch an SSL certificate and automatically inject HTTPS redirection into your Nginx configurations:
+```bash
+sudo certbot --nginx -d mcp-server-kondulabs.eastus2.cloudapp.azure.com
+```
+*Follow the interactive prompts to register your email and agree to terms. Select **Redirect** if asked if you want all HTTP traffic routed to HTTPS.*
+
+### 5. Verify Exposed Public Connection
+Test that Kestrel is now successfully serving SSL traffic to the internet:
+```bash
+curl -I https://mcp-server-kondulabs.eastus2.cloudapp.azure.com
+```
+*(Should return HTTP 200 OK headers).*
