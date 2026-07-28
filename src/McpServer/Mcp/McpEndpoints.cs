@@ -12,17 +12,34 @@ namespace McpServer.Mcp
         // Thread-safe session mapping for SSE channels
         private static readonly ConcurrentDictionary<string, Channel<string>> SseSessions = new();
 
-        /// <summary>
-        /// Middleware to copy the OIDC access token from query string (for SSE EventSource) into the Authorization header.
-        /// </summary>
         public static IApplicationBuilder UseMcpTokenMiddleware(this IApplicationBuilder app)
         {
             return app.Use(async (context, next) =>
             {
-                if (context.Request.Path.StartsWithSegments("/mcp") &&
-                    context.Request.Query.TryGetValue("access_token", out var token))
+                if (context.Request.Path.StartsWithSegments("/mcp"))
                 {
-                    context.Request.Headers.Authorization = $"Bearer {token}";
+                    // 1. Extract query-based Bearer token for SSE channels
+                    if (context.Request.Query.TryGetValue("access_token", out var token))
+                    {
+                        context.Request.Headers.Authorization = $"Bearer {token}";
+                    }
+
+                    // 2. Check for static API key bypass (X-Api-Key header or api_key query param)
+                    var apiKey = context.Request.Headers["X-Api-Key"].ToString();
+                    if (string.IsNullOrEmpty(apiKey))
+                    {
+                        apiKey = context.Request.Query["api_key"].ToString();
+                    }
+
+                    var expectedKey = Environment.GetEnvironmentVariable("MCP_API_KEY");
+                    if (!string.IsNullOrEmpty(expectedKey) && apiKey == expectedKey)
+                    {
+                        // Synthesize an authenticated claims principal to bypass OIDC validation check
+                        var identity = new System.Security.Claims.ClaimsIdentity(
+                            new[] { new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, "ApiKeyUser") },
+                            "ApiKeyAuth");
+                        context.User = new System.Security.Claims.ClaimsPrincipal(identity);
+                    }
                 }
                 await next();
             });
