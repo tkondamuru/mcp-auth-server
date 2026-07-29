@@ -74,7 +74,7 @@ async def verify_mcp_sse(access_token):
                 for tool in tools.tools:
                     print(f" - Name: {tool.name}")
                     print(f"   Description: {tool.description}")
-                    print(f"   Input Schema: {json.dumps(tool.inputSchema)}")
+                    print(f"   Input Schema: {json.dumps(tool.input_schema)}")
 
     except Exception as e:
         print("\nError establishing MCP session:", e)
