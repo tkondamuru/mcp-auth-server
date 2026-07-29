@@ -119,6 +119,7 @@ namespace McpServer.Mcp
                 context.Response.Headers.ContentType = "text/event-stream";
                 context.Response.Headers.CacheControl = "no-cache";
                 context.Response.Headers.Connection = "keep-alive";
+                context.Response.Headers["X-Accel-Buffering"] = "no";
 
                 var sessionId = Guid.NewGuid().ToString("N");
                 var channel = Channel.CreateUnbounded<string>();
