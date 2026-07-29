@@ -125,7 +125,12 @@ namespace McpServer.Mcp
                 var channel = Channel.CreateUnbounded<string>();
                 SseSessions[sessionId] = channel;
 
-                var baseUri = $"{context.Request.Scheme}://{context.Request.Host}";
+                var scheme = context.Request.Headers["X-Forwarded-Proto"].ToString();
+                if (string.IsNullOrEmpty(scheme))
+                {
+                    scheme = context.Request.Scheme;
+                }
+                var baseUri = $"{scheme}://{context.Request.Host}";
                 var endpointUrl = $"{baseUri}/mcp?sessionId={sessionId}";
                 
                 await context.Response.WriteAsync($"event: endpoint\ndata: {endpointUrl}\n\n");
