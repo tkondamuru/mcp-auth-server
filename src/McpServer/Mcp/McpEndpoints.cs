@@ -122,8 +122,15 @@ namespace McpServer.Mcp
                 context.Response.Headers["X-Accel-Buffering"] = "no";
 
                 var sessionId = Guid.NewGuid().ToString("N");
+                var username = context.User.Identity?.Name;
                 var channel = Channel.CreateUnbounded<string>();
+                
                 SseSessions[sessionId] = channel;
+                if (!string.IsNullOrEmpty(username))
+                {
+                    Console.WriteLine($"[MCP Auth] Registered active SSE channel under username key: '{username}'");
+                    SseSessions[username] = channel;
+                }
 
                 var scheme = context.Request.Headers["X-Forwarded-Proto"].ToString();
                 if (string.IsNullOrEmpty(scheme))
@@ -164,6 +171,11 @@ namespace McpServer.Mcp
                 finally
                 {
                     SseSessions.TryRemove(sessionId, out _);
+                    if (!string.IsNullOrEmpty(username))
+                    {
+                        Console.WriteLine($"[MCP Auth] Unregistered active SSE channel under username key: '{username}'");
+                        SseSessions.TryRemove(username, out _);
+                    }
                 }
             })
             .RequireAuthorization(authAttribute);
@@ -184,8 +196,24 @@ namespace McpServer.Mcp
 
                 var resultPayload = ProcessRpcRequest(rpcRequest, context);
 
-                if (!string.IsNullOrEmpty(sessionId) && SseSessions.TryGetValue(sessionId, out var channel))
+                Channel<string>? channel = null;
+                if (!string.IsNullOrEmpty(sessionId))
                 {
+                    SseSessions.TryGetValue(sessionId, out channel);
+                }
+
+                if (channel == null)
+                {
+                    var username = context.User.Identity?.Name;
+                    if (!string.IsNullOrEmpty(username))
+                    {
+                        SseSessions.TryGetValue(username, out channel);
+                    }
+                }
+
+                if (channel != null)
+                {
+                    Console.WriteLine($"[MCP Auth] Forwarding JSON-RPC message to SSE channel for session/username.");
                     if (rpcRequest.Id != null)
                     {
                         var jsonResponse = JsonSerializer.Serialize(new
@@ -202,6 +230,7 @@ namespace McpServer.Mcp
                 }
                 else
                 {
+                    Console.WriteLine($"[MCP Auth] No active SSE channel resolved. Returning JSON-RPC response directly in POST body.");
                     var responseJson = JsonSerializer.Serialize(new
                     {
                         jsonrpc = "2.0",
