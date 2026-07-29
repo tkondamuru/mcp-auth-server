@@ -271,9 +271,21 @@ namespace McpServer.Mcp
         {
             if (rpcRequest.Method == "initialize")
             {
+                // Echo the client's protocol version to negotiate the connection protocol
+                string protocolVersion = "2024-11-05";
+                if (rpcRequest.Params.HasValue && rpcRequest.Params.Value.TryGetProperty("protocolVersion", out var versionProp))
+                {
+                    var clientVersion = versionProp.GetString();
+                    if (!string.IsNullOrEmpty(clientVersion))
+                    {
+                        protocolVersion = clientVersion;
+                        Console.WriteLine($"[MCP Auth] Negotiated protocol version to client's preferred: '{protocolVersion}'");
+                    }
+                }
+
                 return new
                 {
-                    protocolVersion = "2024-11-05",
+                    protocolVersion = protocolVersion,
                     capabilities = new
                     {
                         tools = new { listChanged = false }
