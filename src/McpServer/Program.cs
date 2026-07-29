@@ -239,9 +239,9 @@ var app = builder.Build();
 app.UseRouting();
 app.UseCors();
 
-app.UseMcpTokenMiddleware();
-
 app.UseAuthentication();
+
+app.UseMcpTokenMiddleware();
 app.UseAuthorization();
 
 // --- 6. Endpoints Mappings ---
