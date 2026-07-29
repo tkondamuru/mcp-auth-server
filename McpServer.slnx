@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/McpConsoleServer/McpConsoleServer.csproj" />
     <Project Path="src/McpServer/McpServer.csproj" />
   </Folder>
 </Solution>
