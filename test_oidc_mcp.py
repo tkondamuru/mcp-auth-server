@@ -63,9 +63,9 @@ async def verify_mcp_sse(access_token):
                 print("Initiating protocol handshake (initialize)...")
                 init_result = await session.initialize()
                 print("Handshake Completed! Server info:")
-                print(f" - Name: {init_result.serverInfo.name}")
-                print(f" - Version: {init_result.serverInfo.version}")
-                print(f" - Protocol Version: {init_result.protocolVersion}")
+                print(f" - Name: {init_result.server_info.name}")
+                print(f" - Version: {init_result.server_info.version}")
+                print(f" - Protocol Version: {init_result.protocol_version}")
 
                 print("\nFetching tools from the server...")
                 tools = await session.list_tools()
