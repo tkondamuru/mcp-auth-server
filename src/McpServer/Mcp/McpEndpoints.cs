@@ -121,6 +121,9 @@ namespace McpServer.Mcp
                 context.Response.Headers.Connection = "keep-alive";
                 context.Response.Headers["X-Accel-Buffering"] = "no";
 
+                Console.WriteLine($"[MCP Debug GET] Query String: '{context.Request.QueryString}'");
+                Console.WriteLine($"[MCP Debug GET] Headers: {string.Join(", ", context.Request.Headers.Select(h => $"{h.Key}={h.Value}"))}");
+
                 var sessionId = Guid.NewGuid().ToString("N");
                 var username = context.User.Identity?.Name;
                 var channel = Channel.CreateUnbounded<string>();
@@ -187,6 +190,10 @@ namespace McpServer.Mcp
                 
                 using var reader = new StreamReader(context.Request.Body);
                 var bodyText = await reader.ReadToEndAsync();
+
+                Console.WriteLine($"[MCP Debug POST] Query String: '{context.Request.QueryString}'");
+                Console.WriteLine($"[MCP Debug POST] Headers: {string.Join(", ", context.Request.Headers.Select(h => $"{h.Key}={h.Value}"))}");
+                Console.WriteLine($"[MCP Debug POST] Body: {bodyText}");
                 
                 var rpcRequest = DeserializeRpc(bodyText);
                 if (rpcRequest == null || string.IsNullOrEmpty(rpcRequest.Method))
