@@ -394,6 +394,7 @@
         <div class="tabs-container">
             <button class="tab-btn active" id="tab-btn-clients" onclick="switchTab('clients')">OIDC Clients</button>
             <button class="tab-btn" id="tab-btn-keys" onclick="switchTab('keys')">Developer Keys</button>
+            <button class="tab-btn" id="tab-btn-playground" onclick="switchTab('playground')">MCP Playground</button>
         </div>
 
         <!-- Tab 1: Clients content -->
@@ -463,6 +464,46 @@
                         <!-- Loaded dynamically -->
                     </tbody>
                 </table>
+            </div>
+        </div>
+
+        <!-- Tab 3: Playground content -->
+        <div id="tab-playground-content" style="display: none;">
+            <div class="keys-header">
+                <h3 style="font-size: 1.1rem; color: var(--text-main);">MCP Tool Playground</h3>
+                <button class="btn btn-primary" onclick="connectPlayground()">Connect Stream</button>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                <!-- Connection Status -->
+                <div id="playground-status" style="padding: 1rem; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); font-size: 0.9rem; line-height: 1.5;">
+                    Status: <span class="badge badge-danger">Disconnected</span> (Click Connect to start the EventSource handshake)
+                </div>
+
+                <!-- Tools List & Run Panel -->
+                <div id="playground-tools-container" style="display: none; flex-direction: column; gap: 1.5rem;">
+                    <h4 style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: -0.5rem;">Discovered Tools</h4>
+                    <div id="playground-tools-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.25rem;">
+                        <!-- Dynamically filled with tool cards -->
+                    </div>
+
+                    <!-- Tool execution panel -->
+                    <div id="tool-exec-panel" style="display: none; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 16px; padding: 1.5rem; margin-top: 1rem;">
+                        <h4 id="exec-tool-name" style="margin-bottom: 0.5rem; color: var(--primary-hover); font-size: 1.1rem;"></h4>
+                        <p id="exec-tool-desc" style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;"></p>
+                        
+                        <div id="exec-tool-inputs" style="display: flex; flex-direction: column; gap: 1rem;">
+                            <!-- Dynamically generated inputs -->
+                        </div>
+
+                        <button class="btn btn-primary" style="margin-top: 1.5rem;" onclick="runPlaygroundTool()">Execute Tool</button>
+                        
+                        <div style="margin-top: 1.5rem;">
+                            <label style="font-size: 0.85rem; color: var(--text-muted); display: block; margin-bottom: 0.5rem;">Execution Result</label>
+                            <pre id="exec-tool-result" style="background: #0b0518; padding: 1rem; border-radius: 8px; font-family: monospace; font-size: 0.85rem; color: #34d399; overflow-x: auto; max-height: 250px; border: 1px solid rgba(255,255,255,0.05); white-space: pre-wrap; word-break: break-all;"></pre>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -541,23 +582,37 @@
             
             const btnClients = document.getElementById("tab-btn-clients");
             const btnKeys = document.getElementById("tab-btn-keys");
+            const btnPlayground = document.getElementById("tab-btn-playground");
+            
             const contentClients = document.getElementById("tab-clients-content");
             const contentKeys = document.getElementById("tab-keys-content");
+            const contentPlayground = document.getElementById("tab-playground-content");
+            
             const headerCreateClientBtn = document.getElementById("header-create-client-btn");
+
+            // Remove active classes
+            btnClients.classList.remove("active");
+            btnKeys.classList.remove("active");
+            btnPlayground.classList.remove("active");
+
+            // Hide all contents
+            contentClients.style.display = "none";
+            contentKeys.style.display = "none";
+            contentPlayground.style.display = "none";
+
+            headerCreateClientBtn.style.display = "none";
 
             if (tabName === "clients") {
                 btnClients.classList.add("active");
-                btnKeys.classList.remove("active");
                 contentClients.style.display = "grid";
-                contentKeys.style.display = "none";
                 headerCreateClientBtn.style.display = "inline-flex";
-            } else {
-                btnClients.classList.remove("active");
+            } else if (tabName === "keys") {
                 btnKeys.classList.add("active");
-                contentClients.style.display = "none";
                 contentKeys.style.display = "block";
-                headerCreateClientBtn.style.display = "none";
                 loadKeys();
+            } else if (tabName === "playground") {
+                btnPlayground.classList.add("active");
+                contentPlayground.style.display = "block";
             }
         }
 
@@ -863,6 +918,163 @@
                 }
             } catch (e) {
                 alert("Failed to create client: " + e.message);
+            }
+        }
+
+        // --- MCP Playground EventSource Client ---
+        let playgroundSse = null;
+        let playgroundSessionId = null;
+        let playgroundTools = [];
+        let activePlaygroundTool = null;
+
+        function connectPlayground() {
+            if (playgroundSse) {
+                playgroundSse.close();
+            }
+
+            const statusEl = document.getElementById("playground-status");
+            statusEl.innerHTML = `Status: <span class="badge" style="background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.2);">Connecting...</span> (Establishing SSE Stream)`;
+
+            // Connect to GET /mcp. Browser automatically forwards active login Cookies!
+            playgroundSse = new EventSource("/mcp");
+
+            playgroundSse.addEventListener("endpoint", (e) => {
+                const url = new URL(e.data);
+                playgroundSessionId = url.searchParams.get("sessionId");
+                console.log("Playground Session ID: " + playgroundSessionId);
+                
+                statusEl.innerHTML = `Status: <span class="badge badge-success">Connected</span> (Session: ${playgroundSessionId})`;
+                document.getElementById("playground-tools-container").style.display = "flex";
+                
+                // Initialize handshake
+                sendPlaygroundInit();
+            });
+
+            playgroundSse.addEventListener("message", (e) => {
+                const payload = JSON.parse(e.data);
+                console.log("Received SSE message: ", payload);
+                if (payload.result && payload.result.tools) {
+                    playgroundTools = payload.result.tools;
+                    renderPlaygroundTools();
+                } else if (payload.result && payload.result.content) {
+                    document.getElementById("exec-tool-result").innerText = JSON.stringify(payload.result, null, 2);
+                } else if (payload.error) {
+                    document.getElementById("exec-tool-result").innerText = JSON.stringify(payload.error, null, 2);
+                }
+            });
+
+            playgroundSse.onerror = (err) => {
+                console.error("SSE Error: ", err);
+                statusEl.innerHTML = `Status: <span class="badge badge-danger">Error / Disconnected</span>`;
+                document.getElementById("playground-tools-container").style.display = "none";
+            };
+        }
+
+        async function sendPlaygroundInit() {
+            try {
+                // 1. Send initialize
+                await fetch(`/mcp?sessionId=${playgroundSessionId}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        jsonrpc: "2.0",
+                        id: 1,
+                        method: "initialize",
+                        params: {
+                            protocolVersion: "2024-11-05",
+                            clientInfo: { name: "admin-playground", version: "1.0.0" }
+                        }
+                    })
+                });
+
+                // 2. Request tools list
+                await fetch(`/mcp?sessionId=${playgroundSessionId}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        jsonrpc: "2.0",
+                        id: 2,
+                        method: "tools/list",
+                        params: {}
+                    })
+                });
+            } catch (e) {
+                alert("Failed to initialize playground: " + e.message);
+            }
+        }
+
+        function renderPlaygroundTools() {
+            const listEl = document.getElementById("playground-tools-list");
+            listEl.innerHTML = "";
+
+            playgroundTools.forEach(tool => {
+                const card = document.createElement("div");
+                card.className = "client-item";
+                card.style.cursor = "pointer";
+                card.onclick = () => selectPlaygroundTool(tool);
+                card.innerHTML = `
+                    <div class="client-title">${tool.name}</div>
+                    <div class="client-subtitle" style="margin-top: 0.25rem;">${tool.description}</div>
+                `;
+                listEl.appendChild(card);
+            });
+        }
+
+        function selectPlaygroundTool(tool) {
+            activePlaygroundTool = tool;
+            document.getElementById("tool-exec-panel").style.display = "block";
+            document.getElementById("exec-tool-name").innerText = `Tool: ${tool.name}`;
+            document.getElementById("exec-tool-desc").innerText = tool.description;
+            document.getElementById("exec-tool-result").innerText = "Ready to execute.";
+
+            const inputsEl = document.getElementById("exec-tool-inputs");
+            inputsEl.innerHTML = "";
+
+            if (tool.inputSchema && tool.inputSchema.properties) {
+                Object.keys(tool.inputSchema.properties).forEach(propKey => {
+                    const prop = tool.inputSchema.properties[propKey];
+                    const group = document.createElement("div");
+                    group.className = "form-group";
+                    group.innerHTML = `
+                        <label for="param-${propKey}">${propKey} (${prop.type}) ${tool.inputSchema.required?.includes(propKey) ? '<span style="color: var(--danger);">*</span>' : ''}</label>
+                        <input type="text" id="param-${propKey}" placeholder="${prop.description || ''}" class="uri-input">
+                    `;
+                    inputsEl.appendChild(group);
+                });
+            }
+        }
+
+        async function runPlaygroundTool() {
+            if (!activePlaygroundTool) return;
+            
+            const args = {};
+            if (activePlaygroundTool.inputSchema && activePlaygroundTool.inputSchema.properties) {
+                Object.keys(activePlaygroundTool.inputSchema.properties).forEach(propKey => {
+                    const val = document.getElementById(`param-${propKey}`).value.trim();
+                    if (val) {
+                        args[propKey] = val;
+                    }
+                });
+            }
+
+            document.getElementById("exec-tool-result").innerText = "Executing tool...";
+
+            try {
+                await fetch(`/mcp?sessionId=${playgroundSessionId}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        jsonrpc: "2.0",
+                        id: 3,
+                        method: "tools/call",
+                        params: {
+                            name: activePlaygroundTool.name,
+                            arguments: args
+                        }
+                    })
+                });
+            } catch (e) {
+                document.getElementById("exec-tool-result").innerText = "Error: " + e.message;
             }
         }
 

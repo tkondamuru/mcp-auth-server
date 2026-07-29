@@ -109,7 +109,8 @@ namespace McpServer.Mcp
         public static IEndpointRouteBuilder MapMcpEndpoints(this IEndpointRouteBuilder app)
         {
             var mcpAuthScheme = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
-            var authAttribute = new AuthorizeAttribute { AuthenticationSchemes = mcpAuthScheme };
+            var cookieAuthScheme = Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme;
+            var authAttribute = new AuthorizeAttribute { AuthenticationSchemes = $"{mcpAuthScheme},{cookieAuthScheme}" };
 
 
 
