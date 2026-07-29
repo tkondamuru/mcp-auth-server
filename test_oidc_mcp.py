@@ -69,12 +69,31 @@ async def verify_mcp_sse(access_token):
 
                 print("\nFetching tools from the server...")
                 tools = await session.list_tools()
-                
                 print(f"\nVerification Success! Discovered {len(tools.tools)} tools:")
                 for tool in tools.tools:
                     print(f" - Name: {tool.name}")
                     print(f"   Description: {tool.description}")
                     print(f"   Input Schema: {json.dumps(tool.input_schema)}")
+
+                # Step 3: Proving tool calling (Interactive execution)
+                customer_id = input("\nEnter customer ID to query (or press Enter for 'CUS9999'): ").strip()
+                if not customer_id:
+                    customer_id = "CUS9999"
+
+                tool_name = "get_customer_info"
+                arguments = {"customerId": customer_id}
+                
+                print(f"\nCalling tool '{tool_name}' with arguments: {arguments}...")
+                try:
+                    result = await session.call_tool(tool_name, arguments)
+                    print("\nTool Execution Response:")
+                    for content in result.content:
+                        if hasattr(content, "text"):
+                            print(content.text)
+                        else:
+                            print(content)
+                except Exception as call_err:
+                    print(f"Failed to call tool: {call_err}")
 
     except Exception as e:
         print("\nError establishing MCP session:", e)
