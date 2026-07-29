@@ -280,101 +280,6 @@
             gap: 0.75rem;
             margin-top: 1rem;
         }
-
-        /* Tabs styles */
-        .tabs-container {
-            display: flex;
-            gap: 1rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-            padding-bottom: 0.5rem;
-            margin-top: 0.5rem;
-        }
-
-        .tab-btn {
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            font-family: inherit;
-            font-size: 1rem;
-            font-weight: 600;
-            padding: 0.5rem 1rem;
-            cursor: pointer;
-            position: relative;
-            transition: color 0.2s ease;
-        }
-
-        .tab-btn:hover {
-            color: var(--text-main);
-        }
-
-        .tab-btn.active {
-            color: var(--primary-hover);
-        }
-
-        .tab-btn.active::after {
-            content: '';
-            position: absolute;
-            bottom: -0.5rem;
-            left: 0;
-            right: 0;
-            height: 3px;
-            background: var(--primary);
-            border-radius: 3px 3px 0 0;
-        }
-
-        /* Keys panel styles */
-        .keys-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1.5rem;
-            margin-top: 1rem;
-        }
-
-        .keys-table-container {
-            overflow-x: auto;
-            width: 100%;
-        }
-
-        .keys-table {
-            width: 100%;
-            border-collapse: collapse;
-            text-align: left;
-            font-size: 0.9rem;
-        }
-
-        .keys-table th {
-            color: var(--text-muted);
-            font-weight: 600;
-            padding: 1rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-        }
-
-        .keys-table td {
-            padding: 1rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-            vertical-align: middle;
-        }
-
-        .badge {
-            display: inline-block;
-            padding: 0.25rem 0.5rem;
-            border-radius: 6px;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-
-        .badge-success {
-            background: rgba(16, 185, 129, 0.15);
-            color: #10b981;
-            border: 1px solid rgba(16, 185, 129, 0.2);
-        }
-
-        .badge-danger {
-            background: rgba(239, 68, 68, 0.15);
-            color: #ef4444;
-            border: 1px solid rgba(239, 68, 68, 0.2);
-        }
     </style>
 </head>
 <body>
@@ -383,22 +288,15 @@
         <header>
             <div>
                 <h1>PGW MCP & OIDC Portal</h1>
-                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Dynamically configure Client registrations and Developer API Keys</p>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Dynamically configure client registrations and redirect URIs</p>
             </div>
             <div style="display: flex; gap: 0.75rem;">
-                <button class="btn btn-secondary" id="header-create-client-btn" onclick="openCreateModal()">+ Create Client</button>
+                <button class="btn btn-secondary" onclick="openCreateModal()">+ Create Client</button>
                 <button class="btn btn-danger" onclick="logout()">Logout</button>
             </div>
         </header>
 
-        <div class="tabs-container">
-            <button class="tab-btn active" id="tab-btn-clients" onclick="switchTab('clients')">OIDC Clients</button>
-            <button class="tab-btn" id="tab-btn-keys" onclick="switchTab('keys')">Developer Keys</button>
-            <button class="tab-btn" id="tab-btn-playground" onclick="switchTab('playground')">MCP Playground</button>
-        </div>
-
-        <!-- Tab 1: Clients content -->
-        <div id="tab-clients-content" class="layout-grid">
+        <div class="layout-grid">
             <!-- Sidebar with Client List -->
             <div class="client-sidebar">
                 <h3 style="font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--text-muted);">Configured Clients</h3>
@@ -441,71 +339,6 @@
                 </div>
             </div>
         </div>
-
-        <!-- Tab 2: Keys content -->
-        <div id="tab-keys-content" style="display: none;">
-            <div class="keys-header">
-                <h3 style="font-size: 1.1rem; color: var(--text-main);">Developer API Keys</h3>
-                <button class="btn btn-primary" onclick="openGenerateKeyModal()">+ Generate Developer Key</button>
-            </div>
-            <div class="keys-table-container">
-                <table class="keys-table">
-                    <thead>
-                        <tr>
-                            <th>Username</th>
-                            <th>API Key</th>
-                            <th>Created At</th>
-                            <th>Expires At</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="keys-tbody">
-                        <!-- Loaded dynamically -->
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Tab 3: Playground content -->
-        <div id="tab-playground-content" style="display: none;">
-            <div class="keys-header">
-                <h3 style="font-size: 1.1rem; color: var(--text-main);">MCP Tool Playground</h3>
-                <button class="btn btn-primary" onclick="connectPlayground()">Connect Stream</button>
-            </div>
-            
-            <div style="display: flex; flex-direction: column; gap: 1.5rem;">
-                <!-- Connection Status -->
-                <div id="playground-status" style="padding: 1rem; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); font-size: 0.9rem; line-height: 1.5;">
-                    Status: <span class="badge badge-danger">Disconnected</span> (Click Connect to start the EventSource handshake)
-                </div>
-
-                <!-- Tools List & Run Panel -->
-                <div id="playground-tools-container" style="display: none; flex-direction: column; gap: 1.5rem;">
-                    <h4 style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: -0.5rem;">Discovered Tools</h4>
-                    <div id="playground-tools-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.25rem;">
-                        <!-- Dynamically filled with tool cards -->
-                    </div>
-
-                    <!-- Tool execution panel -->
-                    <div id="tool-exec-panel" style="display: none; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 16px; padding: 1.5rem; margin-top: 1rem;">
-                        <h4 id="exec-tool-name" style="margin-bottom: 0.5rem; color: var(--primary-hover); font-size: 1.1rem;"></h4>
-                        <p id="exec-tool-desc" style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;"></p>
-                        
-                        <div id="exec-tool-inputs" style="display: flex; flex-direction: column; gap: 1rem;">
-                            <!-- Dynamically generated inputs -->
-                        </div>
-
-                        <button class="btn btn-primary" style="margin-top: 1.5rem;" onclick="runPlaygroundTool()">Execute Tool</button>
-                        
-                        <div style="margin-top: 1.5rem;">
-                            <label style="font-size: 0.85rem; color: var(--text-muted); display: block; margin-bottom: 0.5rem;">Execution Result</label>
-                            <pre id="exec-tool-result" style="background: #0b0518; padding: 1rem; border-radius: 8px; font-family: monospace; font-size: 0.85rem; color: #34d399; overflow-x: auto; max-height: 250px; border: 1px solid rgba(255,255,255,0.05); white-space: pre-wrap; word-break: break-all;"></pre>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
 
     <!-- Create Client Modal -->
@@ -535,214 +368,14 @@
         </div>
     </div>
 
-    <!-- Generate Key Modal -->
-    <div class="modal" id="generate-key-modal">
-        <div class="modal-card">
-            <h2 class="modal-title">Generate Developer Key</h2>
-            
-            <div class="form-group" id="generate-key-input-group">
-                <label for="key-username">Associated Username</label>
-                <input type="text" id="key-username" placeholder="e.g. TJ">
-            </div>
-
-            <div class="form-group" id="generate-key-result-group" style="display: none;">
-                <label>Generated Key (Copy this now - it won't be shown again!)</label>
-                <div style="display: flex; gap: 0.5rem; align-items: center; background: rgba(255,255,255,0.05); padding: 0.75rem; border-radius: 8px;">
-                    <code id="generated-key-val" style="color: #c084fc; font-family: monospace; font-size: 0.95rem; word-break: break-all; flex-grow: 1;"></code>
-                    <button class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="copyGeneratedKey()">Copy</button>
-                </div>
-            </div>
-
-            <div class="modal-actions" id="generate-key-actions">
-                <button class="btn btn-secondary" onclick="closeGenerateKeyModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="generateKey()">Generate</button>
-            </div>
-            <div class="modal-actions" id="generate-key-result-actions" style="display: none;">
-                <button class="btn btn-primary" onclick="closeGenerateKeyModal()">Close</button>
-            </div>
-        </div>
-    </div>
-
     <script>
         let clientsList = [];
         let activeClientId = null;
 
-        let activeTab = "clients";
-        let keysList = [];
-
         // Initialize
         document.addEventListener("DOMContentLoaded", () => {
             loadClients();
-            loadKeys();
         });
-
-        // Tab switcher
-        function switchTab(tabName) {
-            activeTab = tabName;
-            
-            const btnClients = document.getElementById("tab-btn-clients");
-            const btnKeys = document.getElementById("tab-btn-keys");
-            const btnPlayground = document.getElementById("tab-btn-playground");
-            
-            const contentClients = document.getElementById("tab-clients-content");
-            const contentKeys = document.getElementById("tab-keys-content");
-            const contentPlayground = document.getElementById("tab-playground-content");
-            
-            const headerCreateClientBtn = document.getElementById("header-create-client-btn");
-
-            // Remove active classes
-            btnClients.classList.remove("active");
-            btnKeys.classList.remove("active");
-            btnPlayground.classList.remove("active");
-
-            // Hide all contents
-            contentClients.style.display = "none";
-            contentKeys.style.display = "none";
-            contentPlayground.style.display = "none";
-
-            headerCreateClientBtn.style.display = "none";
-
-            if (tabName === "clients") {
-                btnClients.classList.add("active");
-                contentClients.style.display = "grid";
-                headerCreateClientBtn.style.display = "inline-flex";
-            } else if (tabName === "keys") {
-                btnKeys.classList.add("active");
-                contentKeys.style.display = "block";
-                loadKeys();
-            } else if (tabName === "playground") {
-                btnPlayground.classList.add("active");
-                contentPlayground.style.display = "block";
-            }
-        }
-
-        // --- Developer Key Management functions ---
-        async function loadKeys() {
-            try {
-                const response = await fetch("/admin/api/keys");
-                if (response.ok) {
-                    keysList = await response.json();
-                    renderKeys();
-                }
-            } catch (e) {
-                console.error("Failed to load developer keys: ", e);
-            }
-        }
-
-        function renderKeys() {
-            const tbody = document.getElementById("keys-tbody");
-            tbody.innerHTML = "";
-
-            if (keysList.length === 0) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">No developer keys active. Generate a key to connect custom clients statically.</td>
-                    </tr>`;
-                return;
-            }
-
-            keysList.forEach(key => {
-                const tr = document.createElement("tr");
-                const createdStr = new Date(key.createdAt).toLocaleString();
-                const expiresStr = new Date(key.expiresAt).toLocaleString();
-                const statusBadge = key.isExpired 
-                    ? `<span class="badge badge-danger">Expired</span>` 
-                    : `<span class="badge badge-success">Active</span>`;
-
-                tr.innerHTML = `
-                    <td style="font-weight: 500;">${key.username}</td>
-                    <td>
-                        <span style="font-family: monospace; color: var(--text-muted); background: rgba(255,255,255,0.02); padding: 0.25rem 0.5rem; border-radius: 4px;">
-                            ${key.key.substring(0, 12)}...
-                        </span>
-                    </td>
-                    <td style="color: var(--text-muted); font-size: 0.8rem;">${createdStr}</td>
-                    <td style="color: var(--text-muted); font-size: 0.8rem;">${expiresStr}</td>
-                    <td>${statusBadge}</td>
-                    <td>
-                        <button class="btn btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;" onclick="revokeKey('${key.id}')">Revoke</button>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
-
-        function openGenerateKeyModal() {
-            document.getElementById("generate-key-input-group").style.display = "block";
-            document.getElementById("generate-key-result-group").style.display = "none";
-            document.getElementById("generate-key-actions").style.display = "flex";
-            document.getElementById("generate-key-result-actions").style.display = "none";
-            document.getElementById("key-username").value = "";
-            document.getElementById("generate-key-modal").classList.add("open");
-        }
-
-        function closeGenerateKeyModal() {
-            document.getElementById("generate-key-modal").classList.remove("open");
-            loadKeys();
-        }
-
-        async function generateKey() {
-            const username = document.getElementById("key-username").value.trim();
-            if (!username) {
-                alert("Username is required.");
-                return;
-            }
-
-            try {
-                const response = await fetch("/admin/api/keys/generate", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ username })
-                });
-
-                if (response.ok) {
-                    const result = await response.json();
-                    document.getElementById("generated-key-val").innerText = result.key;
-                    
-                    document.getElementById("generate-key-input-group").style.display = "none";
-                    document.getElementById("generate-key-result-group").style.display = "block";
-                    document.getElementById("generate-key-actions").style.display = "none";
-                    document.getElementById("generate-key-result-actions").style.display = "flex";
-                } else {
-                    const err = await response.text();
-                    alert("Failed to generate key: " + err);
-                }
-            } catch (e) {
-                alert("Error: " + e.message);
-            }
-        }
-
-        function copyGeneratedKey() {
-            const keyText = document.getElementById("generated-key-val").innerText;
-            navigator.clipboard.writeText(keyText).then(() => {
-                alert("API Key copied to clipboard!");
-            }).catch(err => {
-                alert("Failed to copy key: " + err);
-            });
-        }
-
-        async function revokeKey(keyId) {
-            if (!confirm("Are you sure you want to revoke this developer API key? Clients using this key will immediately lose access.")) {
-                return;
-            }
-
-            try {
-                const response = await fetch("/admin/api/keys/revoke", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ keyId })
-                });
-
-                if (response.ok) {
-                    loadKeys();
-                } else {
-                    const err = await response.text();
-                    alert("Failed to revoke key: " + err);
-                }
-            } catch (e) {
-                alert("Error: " + e.message);
-            }
-        }
 
         // 1. Fetch clients list
         async function loadClients() {
@@ -759,6 +392,7 @@
             }
         }
 
+        // Render client list items in sidebar
         // Render client list items in sidebar
         function renderClients() {
             const listEl = document.getElementById("client-list");
@@ -918,163 +552,6 @@
                 }
             } catch (e) {
                 alert("Failed to create client: " + e.message);
-            }
-        }
-
-        // --- MCP Playground EventSource Client ---
-        let playgroundSse = null;
-        let playgroundSessionId = null;
-        let playgroundTools = [];
-        let activePlaygroundTool = null;
-
-        function connectPlayground() {
-            if (playgroundSse) {
-                playgroundSse.close();
-            }
-
-            const statusEl = document.getElementById("playground-status");
-            statusEl.innerHTML = `Status: <span class="badge" style="background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.2);">Connecting...</span> (Establishing SSE Stream)`;
-
-            // Connect to GET /mcp. Browser automatically forwards active login Cookies!
-            playgroundSse = new EventSource("/mcp");
-
-            playgroundSse.addEventListener("endpoint", (e) => {
-                const url = new URL(e.data);
-                playgroundSessionId = url.searchParams.get("sessionId");
-                console.log("Playground Session ID: " + playgroundSessionId);
-                
-                statusEl.innerHTML = `Status: <span class="badge badge-success">Connected</span> (Session: ${playgroundSessionId})`;
-                document.getElementById("playground-tools-container").style.display = "flex";
-                
-                // Initialize handshake
-                sendPlaygroundInit();
-            });
-
-            playgroundSse.addEventListener("message", (e) => {
-                const payload = JSON.parse(e.data);
-                console.log("Received SSE message: ", payload);
-                if (payload.result && payload.result.tools) {
-                    playgroundTools = payload.result.tools;
-                    renderPlaygroundTools();
-                } else if (payload.result && payload.result.content) {
-                    document.getElementById("exec-tool-result").innerText = JSON.stringify(payload.result, null, 2);
-                } else if (payload.error) {
-                    document.getElementById("exec-tool-result").innerText = JSON.stringify(payload.error, null, 2);
-                }
-            });
-
-            playgroundSse.onerror = (err) => {
-                console.error("SSE Error: ", err);
-                statusEl.innerHTML = `Status: <span class="badge badge-danger">Error / Disconnected</span>`;
-                document.getElementById("playground-tools-container").style.display = "none";
-            };
-        }
-
-        async function sendPlaygroundInit() {
-            try {
-                // 1. Send initialize
-                await fetch(`/mcp?sessionId=${playgroundSessionId}`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        jsonrpc: "2.0",
-                        id: 1,
-                        method: "initialize",
-                        params: {
-                            protocolVersion: "2024-11-05",
-                            clientInfo: { name: "admin-playground", version: "1.0.0" }
-                        }
-                    })
-                });
-
-                // 2. Request tools list
-                await fetch(`/mcp?sessionId=${playgroundSessionId}`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        jsonrpc: "2.0",
-                        id: 2,
-                        method: "tools/list",
-                        params: {}
-                    })
-                });
-            } catch (e) {
-                alert("Failed to initialize playground: " + e.message);
-            }
-        }
-
-        function renderPlaygroundTools() {
-            const listEl = document.getElementById("playground-tools-list");
-            listEl.innerHTML = "";
-
-            playgroundTools.forEach(tool => {
-                const card = document.createElement("div");
-                card.className = "client-item";
-                card.style.cursor = "pointer";
-                card.onclick = () => selectPlaygroundTool(tool);
-                card.innerHTML = `
-                    <div class="client-title">${tool.name}</div>
-                    <div class="client-subtitle" style="margin-top: 0.25rem;">${tool.description}</div>
-                `;
-                listEl.appendChild(card);
-            });
-        }
-
-        function selectPlaygroundTool(tool) {
-            activePlaygroundTool = tool;
-            document.getElementById("tool-exec-panel").style.display = "block";
-            document.getElementById("exec-tool-name").innerText = `Tool: ${tool.name}`;
-            document.getElementById("exec-tool-desc").innerText = tool.description;
-            document.getElementById("exec-tool-result").innerText = "Ready to execute.";
-
-            const inputsEl = document.getElementById("exec-tool-inputs");
-            inputsEl.innerHTML = "";
-
-            if (tool.inputSchema && tool.inputSchema.properties) {
-                Object.keys(tool.inputSchema.properties).forEach(propKey => {
-                    const prop = tool.inputSchema.properties[propKey];
-                    const group = document.createElement("div");
-                    group.className = "form-group";
-                    group.innerHTML = `
-                        <label for="param-${propKey}">${propKey} (${prop.type}) ${tool.inputSchema.required?.includes(propKey) ? '<span style="color: var(--danger);">*</span>' : ''}</label>
-                        <input type="text" id="param-${propKey}" placeholder="${prop.description || ''}" class="uri-input">
-                    `;
-                    inputsEl.appendChild(group);
-                });
-            }
-        }
-
-        async function runPlaygroundTool() {
-            if (!activePlaygroundTool) return;
-            
-            const args = {};
-            if (activePlaygroundTool.inputSchema && activePlaygroundTool.inputSchema.properties) {
-                Object.keys(activePlaygroundTool.inputSchema.properties).forEach(propKey => {
-                    const val = document.getElementById(`param-${propKey}`).value.trim();
-                    if (val) {
-                        args[propKey] = val;
-                    }
-                });
-            }
-
-            document.getElementById("exec-tool-result").innerText = "Executing tool...";
-
-            try {
-                await fetch(`/mcp?sessionId=${playgroundSessionId}`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        jsonrpc: "2.0",
-                        id: 3,
-                        method: "tools/call",
-                        params: {
-                            name: activePlaygroundTool.name,
-                            arguments: args
-                        }
-                    })
-                });
-            } catch (e) {
-                document.getElementById("exec-tool-result").innerText = "Error: " + e.message;
             }
         }
 

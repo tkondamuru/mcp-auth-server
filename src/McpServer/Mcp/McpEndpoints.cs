@@ -17,102 +17,13 @@ namespace McpServer.Mcp
         // Thread-safe session mapping for SSE channels
         private static readonly ConcurrentDictionary<string, Channel<string>> SseSessions = new();
 
-        public static IApplicationBuilder UseMcpTokenMiddleware(this IApplicationBuilder app)
-        {
-            return app.Use(async (context, next) =>
-            {
-                if (context.Request.Path.StartsWithSegments("/mcp"))
-                {
-                    Console.WriteLine($"[MCP Auth] Intercepted request path: {context.Request.Path} ({context.Request.Method})");
-
-                    // 1. Extract query-based Bearer token for SSE channels
-                    if (context.Request.Query.TryGetValue("access_token", out var token))
-                    {
-                        Console.WriteLine("[MCP Auth] Found access_token in query string. Mapping to Authorization header.");
-                        context.Request.Headers.Authorization = $"Bearer {token}";
-                    }
-
-                    // 2. Check for developer key in DB (X-Api-Key header or api_key query param)
-                    var apiKey = context.Request.Headers["X-Api-Key"].ToString();
-                    if (string.IsNullOrEmpty(apiKey))
-                    {
-                        apiKey = context.Request.Query["api_key"].ToString();
-                    }
-
-                    if (!string.IsNullOrEmpty(apiKey))
-                    {
-                        var displayKey = apiKey.Length > 12 ? apiKey.Substring(0, 12) + "..." : apiKey;
-                        Console.WriteLine($"[MCP Auth] Received X-Api-Key: {displayKey}");
-
-                        try
-                        {
-                            var dbContext = context.RequestServices.GetRequiredService<ApplicationDbContext>();
-                            var devKey = dbContext.DeveloperKeys
-                                .FirstOrDefault(k => k.Key == apiKey && k.ExpiresAt > DateTime.UtcNow);
-
-                            if (devKey != null)
-                            {
-                                Console.WriteLine($"[MCP Auth] API Key verified successfully for user '{devKey.Username}'.");
-
-                                // Synthesize authenticated claims principal using the specific scheme expected by the endpoint authorization
-                                var identity = new System.Security.Claims.ClaimsIdentity(
-                                    new[]
-                                    {
-                                        new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, devKey.Username),
-                                        new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, devKey.Username)
-                                    },
-                                    OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
-                                context.User = new System.Security.Claims.ClaimsPrincipal(identity);
-
-                                // Dynamically append AllowAnonymousAttribute to the endpoint metadata
-                                // to bypass OpenIddict's scheme-specific Authenticate check.
-                                var endpoint = context.GetEndpoint();
-                                if (endpoint != null)
-                                {
-                                    var metadata = new EndpointMetadataCollection(
-                                        endpoint.Metadata.Append(new AllowAnonymousAttribute())
-                                    );
-                                    context.SetEndpoint(new Endpoint(
-                                        endpoint.RequestDelegate,
-                                        metadata,
-                                        endpoint.DisplayName
-                                    ));
-                                    Console.WriteLine($"[MCP Auth] OIDC authorization policy bypassed on endpoint: {endpoint.DisplayName}");
-                                }
-                                else
-                                {
-                                    Console.WriteLine("[MCP Auth] Warning: Endpoint was not resolved prior to middleware execution.");
-                                }
-                            }
-                            else
-                            {
-                                Console.WriteLine("[MCP Auth] API Key provided but was not found or has expired in the database.");
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"[MCP Auth] ERROR querying DeveloperKeys database table: {ex.Message}");
-                        }
-                    }
-                    else
-                    {
-                        Console.WriteLine("[MCP Auth] No API Key provided in headers or query string.");
-                    }
-                }
-                await next();
-            });
-        }
-
         /// <summary>
         /// Map all MCP connection and transport endpoints (Legacy SSE & Unified Streamable HTTP).
         /// </summary>
         public static IEndpointRouteBuilder MapMcpEndpoints(this IEndpointRouteBuilder app)
         {
             var mcpAuthScheme = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
-            var cookieAuthScheme = Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme;
-            var authAttribute = new AuthorizeAttribute { AuthenticationSchemes = $"{mcpAuthScheme},{cookieAuthScheme}" };
-
-
+            var authAttribute = new AuthorizeAttribute { AuthenticationSchemes = mcpAuthScheme };
 
             // 3. Modern Streamable HTTP GET /mcp (Establishes SSE stream connection)
             app.MapGet("/mcp", async (HttpContext context) =>
@@ -121,21 +32,11 @@ namespace McpServer.Mcp
                 context.Response.Headers.CacheControl = "no-cache";
                 context.Response.Headers.Connection = "keep-alive";
                 context.Response.Headers["X-Accel-Buffering"] = "no";
-
-                Console.WriteLine($"[MCP Debug GET] Query String: '{context.Request.QueryString}'");
-                Console.WriteLine($"[MCP Debug GET] Headers: {string.Join(", ", context.Request.Headers.Select(h => $"{h.Key}={h.Value}"))}");
-
+ 
                 var sessionId = Guid.NewGuid().ToString("N");
-                var username = context.User.Identity?.Name;
                 var channel = Channel.CreateUnbounded<string>();
-                
                 SseSessions[sessionId] = channel;
-                if (!string.IsNullOrEmpty(username))
-                {
-                    Console.WriteLine($"[MCP Auth] Registered active SSE channel under username key: '{username}'");
-                    SseSessions[username] = channel;
-                }
-
+ 
                 var scheme = context.Request.Headers["X-Forwarded-Proto"].ToString();
                 if (string.IsNullOrEmpty(scheme))
                 {
@@ -146,14 +47,14 @@ namespace McpServer.Mcp
                 
                 await context.Response.WriteAsync($"event: endpoint\ndata: {endpointUrl}\n\n");
                 await context.Response.Body.FlushAsync();
-
+ 
                 try
                 {
                     while (!context.RequestAborted.IsCancellationRequested)
                     {
                         var readTask = channel.Reader.WaitToReadAsync(context.RequestAborted).AsTask();
                         var delayTask = Task.Delay(TimeSpan.FromSeconds(15), context.RequestAborted);
-
+ 
                         var completedTask = await Task.WhenAny(readTask, delayTask);
                         if (completedTask == readTask && await readTask)
                         {
@@ -175,11 +76,6 @@ namespace McpServer.Mcp
                 finally
                 {
                     SseSessions.TryRemove(sessionId, out _);
-                    if (!string.IsNullOrEmpty(username))
-                    {
-                        Console.WriteLine($"[MCP Auth] Unregistered active SSE channel under username key: '{username}'");
-                        SseSessions.TryRemove(username, out _);
-                    }
                 }
             })
             .RequireAuthorization(authAttribute);
@@ -191,37 +87,17 @@ namespace McpServer.Mcp
                 
                 using var reader = new StreamReader(context.Request.Body);
                 var bodyText = await reader.ReadToEndAsync();
-
-                Console.WriteLine($"[MCP Debug POST] Query String: '{context.Request.QueryString}'");
-                Console.WriteLine($"[MCP Debug POST] Headers: {string.Join(", ", context.Request.Headers.Select(h => $"{h.Key}={h.Value}"))}");
-                Console.WriteLine($"[MCP Debug POST] Body: {bodyText}");
                 
                 var rpcRequest = DeserializeRpc(bodyText);
                 if (rpcRequest == null || string.IsNullOrEmpty(rpcRequest.Method))
                 {
                     return Results.BadRequest("Missing method or invalid format.");
                 }
-
+ 
                 var resultPayload = ProcessRpcRequest(rpcRequest, context);
-
-                Channel<string>? channel = null;
-                if (!string.IsNullOrEmpty(sessionId))
+ 
+                if (!string.IsNullOrEmpty(sessionId) && SseSessions.TryGetValue(sessionId, out var channel))
                 {
-                    SseSessions.TryGetValue(sessionId, out channel);
-                }
-
-                if (channel == null)
-                {
-                    var username = context.User.Identity?.Name;
-                    if (!string.IsNullOrEmpty(username))
-                    {
-                        SseSessions.TryGetValue(username, out channel);
-                    }
-                }
-
-                if (channel != null)
-                {
-                    Console.WriteLine($"[MCP Auth] Forwarding JSON-RPC message to SSE channel for session/username.");
                     if (rpcRequest.Id != null)
                     {
                         var jsonResponse = JsonSerializer.Serialize(new
@@ -230,7 +106,7 @@ namespace McpServer.Mcp
                             id = rpcRequest.Id,
                             result = resultPayload
                         });
-
+ 
                         var sseMessage = $"event: message\ndata: {jsonResponse}\n\n";
                         await channel.Writer.WriteAsync(sseMessage);
                     }
@@ -238,7 +114,6 @@ namespace McpServer.Mcp
                 }
                 else
                 {
-                    Console.WriteLine($"[MCP Auth] No active SSE channel resolved. Returning JSON-RPC response directly in POST body.");
                     var responseJson = JsonSerializer.Serialize(new
                     {
                         jsonrpc = "2.0",
