@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.DependencyInjection;
 using OpenIddict.Validation.AspNetCore;
@@ -22,9 +23,12 @@ namespace McpServer.Mcp
             {
                 if (context.Request.Path.StartsWithSegments("/mcp"))
                 {
+                    Console.WriteLine($"[MCP Auth] Intercepted request path: {context.Request.Path} ({context.Request.Method})");
+
                     // 1. Extract query-based Bearer token for SSE channels
                     if (context.Request.Query.TryGetValue("access_token", out var token))
                     {
+                        Console.WriteLine("[MCP Auth] Found access_token in query string. Mapping to Authorization header.");
                         context.Request.Headers.Authorization = $"Bearer {token}";
                     }
 
@@ -37,6 +41,9 @@ namespace McpServer.Mcp
 
                     if (!string.IsNullOrEmpty(apiKey))
                     {
+                        var displayKey = apiKey.Length > 12 ? apiKey.Substring(0, 12) + "..." : apiKey;
+                        Console.WriteLine($"[MCP Auth] Received X-Api-Key: {displayKey}");
+
                         try
                         {
                             var dbContext = context.RequestServices.GetRequiredService<ApplicationDbContext>();
@@ -45,6 +52,8 @@ namespace McpServer.Mcp
 
                             if (devKey != null)
                             {
+                                Console.WriteLine($"[MCP Auth] API Key verified successfully for user '{devKey.Username}'.");
+
                                 // Synthesize authenticated claims principal using the specific scheme expected by the endpoint authorization
                                 var identity = new System.Security.Claims.ClaimsIdentity(
                                     new[]
@@ -54,12 +63,40 @@ namespace McpServer.Mcp
                                     },
                                     OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
                                 context.User = new System.Security.Claims.ClaimsPrincipal(identity);
+
+                                // Dynamically append AllowAnonymousAttribute to the endpoint metadata
+                                // to bypass OpenIddict's scheme-specific Authenticate check.
+                                var endpoint = context.GetEndpoint();
+                                if (endpoint != null)
+                                {
+                                    var metadata = new EndpointMetadataCollection(
+                                        endpoint.Metadata.Append(new AllowAnonymousAttribute())
+                                    );
+                                    context.SetEndpoint(new Endpoint(
+                                        endpoint.RequestDelegate,
+                                        metadata,
+                                        endpoint.DisplayName
+                                    ));
+                                    Console.WriteLine($"[MCP Auth] OIDC authorization policy bypassed on endpoint: {endpoint.DisplayName}");
+                                }
+                                else
+                                {
+                                    Console.WriteLine("[MCP Auth] Warning: Endpoint was not resolved prior to middleware execution.");
+                                }
+                            }
+                            else
+                            {
+                                Console.WriteLine("[MCP Auth] API Key provided but was not found or has expired in the database.");
                             }
                         }
                         catch (Exception ex)
                         {
-                            Console.WriteLine($"[WARNING] Failed to query DeveloperKeys database table: {ex.Message}");
+                            Console.WriteLine($"[MCP Auth] ERROR querying DeveloperKeys database table: {ex.Message}");
                         }
+                    }
+                    else
+                    {
+                        Console.WriteLine("[MCP Auth] No API Key provided in headers or query string.");
                     }
                 }
                 await next();
