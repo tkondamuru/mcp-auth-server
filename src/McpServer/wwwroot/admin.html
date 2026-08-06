@@ -368,6 +368,30 @@
         </div>
     </div>
 
+    <!-- Admin PIN Modal (Open by default) -->
+    <div class="modal open" id="pin-modal">
+        <div class="modal-card" style="text-align: center;">
+            <div style="width: 56px; height: 56px; background: var(--primary); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin: 0 auto; box-shadow: 0 8px 16px rgba(139, 92, 246, 0.3);">
+                <span style="font-size: 1.5rem;">🔒</span>
+            </div>
+            <div>
+                <h2 class="modal-title" style="margin-bottom: 0.5rem;">Admin Authorization</h2>
+                <p style="font-size: 0.85rem; color: var(--text-muted);">Enter Admin PIN to manage OIDC clients</p>
+            </div>
+            
+            <div id="pin-error-alert" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 12px; padding: 0.75rem; color: #fca5a5; font-size: 0.85rem; text-align: left;">
+                Invalid Admin PIN. Please try again.
+            </div>
+
+            <form id="pin-form" onsubmit="event.preventDefault(); submitPin();">
+                <div class="form-group">
+                    <input type="password" id="pin-input" placeholder="Enter PIN (Default: 052512)" required style="text-align: center; font-size: 1.2rem; letter-spacing: 4px;" autofocus>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; margin-top: 0.5rem;">Unlock Admin Panel</button>
+            </form>
+        </div>
+    </div>
+
     <script>
         let clientsList = [];
         let activeClientId = null;
@@ -381,18 +405,60 @@
         async function loadClients() {
             try {
                 const response = await fetch("/admin/api/clients");
-                if (response.status === 401 || response.redirected) {
-                    window.location.href = "/login?ReturnUrl=/admin.html";
+                if (response.status === 401 || response.status === 403) {
+                    showPinModal();
                     return;
                 }
-                clientsList = await response.json();
-                renderClients();
+                if (response.ok) {
+                    hidePinModal();
+                    clientsList = await response.json();
+                    renderClients();
+                } else {
+                    showPinModal();
+                }
             } catch (e) {
-                alert("Error loading client registry: " + e.message);
+                showPinModal();
             }
         }
 
-        // Render client list items in sidebar
+
+        function showPinModal() {
+            document.getElementById("pin-modal").classList.add("open");
+            document.getElementById("pin-input").focus();
+        }
+
+        function hidePinModal() {
+            document.getElementById("pin-modal").classList.remove("open");
+            document.getElementById("pin-error-alert").style.display = "none";
+            document.getElementById("pin-input").value = "";
+        }
+
+        async function submitPin() {
+            const pin = document.getElementById("pin-input").value.trim();
+            const errorAlert = document.getElementById("pin-error-alert");
+            errorAlert.style.display = "none";
+
+            if (!pin) return;
+
+            try {
+                const response = await fetch("/admin/api/login-pin", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ pin })
+                });
+
+                if (response.ok) {
+                    hidePinModal();
+                    await loadClients();
+                } else {
+                    errorAlert.style.display = "block";
+                    document.getElementById("pin-input").select();
+                }
+            } catch (e) {
+                alert("PIN submission failed: " + e.message);
+            }
+        }
+
         // Render client list items in sidebar
         function renderClients() {
             const listEl = document.getElementById("client-list");
@@ -558,8 +624,9 @@
         // Logout
         function logout() {
             document.cookie = ".AspNetCore.Cookies=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-            window.location.href = "/login";
+            showPinModal();
         }
     </script>
 </body>
 </html>
+

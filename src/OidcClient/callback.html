@@ -186,6 +186,7 @@
             <div class="actions">
                 <button class="btn" id="exchange-btn" onclick="exchangeToken()">Exchange Code for Tokens</button>
                 <button class="btn btn-secondary" onclick="window.location.href='/'">Start Over</button>
+                <button class="btn btn-secondary" onclick="logout()">Log Out Session</button>
             </div>
         </div>
 
@@ -214,37 +215,56 @@
         <!-- Card 3: MCP API Output (Hidden until queried) -->
         <div id="mcp-card" class="card hidden">
             <div class="section-title">
-                <span>Authenticated MCP Response</span>
-                <span class="badge-status status-success">Success</span>
+                <span>Stateless MCP Response Payload</span>
+                <span class="badge-status status-success">HTTP 200 OK</span>
             </div>
-            <p>Executed an authenticated JSON-RPC request to the <strong>/mcp</strong> route passing the access token. The MCP server returned the following tools payload:</p>
-            <div class="json-box" id="mcp-response"></div>
+            <p>Result returned from calling protected <code>POST /mcp</code> using the OIDC Bearer access token:</p>
+            <pre class="value-box" style="color: #c084fc; font-size: 0.8rem; text-align: left; max-height: 300px; overflow-y: auto;" id="mcp-response"></pre>
         </div>
     </div>
 
     <script>
-        // 1. Extract the authorization code from URL query parameters
-        const urlParams = new URLSearchParams(window.location.search);
-        const code = urlParams.get('code');
-        
-        const codeVerifier = localStorage.getItem("code_verifier");
+        let activeAccessToken = null;
 
-        document.getElementById('auth-code').innerText = code || "No code found. Please start the login flow from the portal landing page.";
-        document.getElementById('code-verifier').innerText = codeVerifier || "No cached PKCE verifier found.";
+        // 1. On page load, extract code from URL and verify cached PKCE verifier
+        document.addEventListener("DOMContentLoaded", () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const code = urlParams.get('code');
+            const verifier = localStorage.getItem("code_verifier");
 
-        if (!code || !codeVerifier) {
-            document.getElementById('exchange-btn').disabled = true;
-        }
+            if (code) {
+                document.getElementById('auth-code').innerText = code;
+            } else {
+                document.getElementById('auth-code').innerText = "ERROR: No authorization code found in URL redirect query string.";
+                document.getElementById('exchange-btn').disabled = true;
+            }
 
-        let activeAccessToken = "";
+            if (verifier) {
+                document.getElementById('code-verifier').innerText = verifier;
+            } else {
+                document.getElementById('code-verifier').innerText = "WARNING: No code verifier found in localStorage. PKCE verification will fail.";
+            }
+        });
 
-        // 2. Swaps the authorization code + verifier for JWT Tokens
+        // 2. Exchanges authorization code for standard OIDC access/id tokens via POST to /connect/token
         async function exchangeToken() {
+            const code = document.getElementById('auth-code').innerText;
+            const verifier = document.getElementById('code-verifier').innerText;
             const exchangeBtn = document.getElementById('exchange-btn');
+
+            if (!code || code.startsWith("ERROR")) return;
+
             exchangeBtn.disabled = true;
-            exchangeBtn.innerText = "Exchanging...";
+            exchangeBtn.innerText = "Exchanging Code...";
 
             const redirectUri = `${window.location.origin}/callback.html`;
+
+            const bodyParams = new URLSearchParams();
+            bodyParams.append('grant_type', 'authorization_code');
+            bodyParams.append('client_id', 'mcp-client');
+            bodyParams.append('code', code);
+            bodyParams.append('redirect_uri', redirectUri);
+            bodyParams.append('code_verifier', verifier);
 
             try {
                 const response = await fetch("http://localhost:5000/connect/token", {
@@ -252,30 +272,22 @@
                     headers: {
                         "Content-Type": "application/x-www-form-urlencoded"
                     },
-                    body: new URLSearchParams({
-                        grant_type: "authorization_code",
-                        client_id: "mcp-client",
-                        code: code,
-                        redirect_uri: redirectUri,
-                        code_verifier: codeVerifier
-                    })
+                    body: bodyParams
                 });
 
                 if (response.ok) {
-                    const tokens = await response.json();
-                    activeAccessToken = tokens.access_token;
-                    
-                    document.getElementById('access-token').innerText = tokens.access_token;
-                    document.getElementById('id-token').innerText = tokens.id_token || "Not requested or not issued";
-                    document.getElementById('refresh-token').innerText = tokens.refresh_token || "offline_access scope missing or not granted";
-                    
+                    const data = await response.json();
+                    activeAccessToken = data.access_token;
+
+                    document.getElementById('access-token').innerText = data.access_token || "N/A";
+                    document.getElementById('id-token').innerText = data.id_token || "N/A";
+                    document.getElementById('refresh-token').innerText = data.refresh_token || "None (Offline access not requested)";
+
                     document.getElementById('tokens-card').classList.remove('hidden');
-                    
-                    // Scroll to the tokens card smoothly
                     document.getElementById('tokens-card').scrollIntoView({ behavior: 'smooth' });
                 } else {
-                    const err = await response.json();
-                    alert(`Failed to exchange code: ${err.error_description || err.error}`);
+                    const errorText = await response.text();
+                    alert(`Token Exchange Failed (HTTP ${response.status}): ${errorText}`);
                 }
             } catch (e) {
                 alert(`Error connecting to OIDC token endpoint: ${e.message}`);
@@ -312,6 +324,13 @@
             } catch (e) {
                 alert(`Error executing MCP request: ${e.message}`);
             }
+        }
+
+        // 4. Log Out & Clear Server Cookies
+        function logout() {
+            localStorage.clear();
+            const clientHome = encodeURIComponent(window.location.origin);
+            window.location.href = `http://localhost:5000/logout?ReturnUrl=${clientHome}`;
         }
     </script>
 </body>

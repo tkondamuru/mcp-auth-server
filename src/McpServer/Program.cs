@@ -119,11 +119,12 @@ builder.Services.AddOpenIddict()
     })
     .AddServer(options =>
     {
-        // Define standard OIDC endpoints & set lifespan to 7 days
+        // Define standard OIDC endpoints & set access token lifespan to 1 hour
         options.SetAuthorizationEndpointUris("/connect/authorize")
                .SetTokenEndpointUris("/connect/token")
                .SetUserInfoEndpointUris("/connect/userinfo")
-               .SetAccessTokenLifetime(TimeSpan.FromDays(7));
+               .SetAccessTokenLifetime(TimeSpan.FromHours(1))
+               .DisableAccessTokenEncryption();
 
         // Allow flows
         options.AllowAuthorizationCodeFlow()
@@ -231,6 +232,7 @@ builder.Services.AddCors(options =>
 });
 
 // 4. Register Custom Services
+builder.Services.AddHttpClient();
 builder.Services.AddSingleton<IUserAuthenticationService, UserAuthenticationService>();
 builder.Services.AddHostedService<DbSeeder>();
 
@@ -244,9 +246,12 @@ app.UseAuthorization();
 
 // --- 6. Endpoints Mappings ---
 
-// Serve the premium login UI
+// Serve the premium login UI (forcing no-cache headers to bypass browser caching of static login.html)
 app.MapGet("/login", (HttpContext context) =>
 {
+    context.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate, max-age=0";
+    context.Response.Headers.Pragma = "no-cache";
+    
     var path = FindFilePath(Path.Combine("wwwroot", "login.html"));
     return Results.File(path, "text/html");
 });
@@ -259,17 +264,29 @@ app.MapPost("/login", async (HttpContext context, IUserAuthenticationService aut
     var password = context.Request.Form["password"].ToString();
     var returnUrl = context.Request.Query["ReturnUrl"].ToString();
 
-    var isValid = await authService.ValidateCredentialsAsync(username, password);
-    if (!isValid)
+    var authResult = await authService.ValidateCredentialsAsync(username, password);
+    if (!authResult.Success)
     {
         var redirectUrl = $"/login?error=invalid_credentials&ReturnUrl={HttpUtility.UrlEncode(returnUrl)}";
         return Results.Redirect(redirectUrl);
     }
 
-    // Set authentication cookie
+    // Set authentication cookie carrying external authentication claims
     var identity = new ClaimsIdentity(CookieAuthenticationDefaults.AuthenticationScheme);
     identity.AddClaim(new System.Security.Claims.Claim(ClaimTypes.NameIdentifier, username));
     identity.AddClaim(new System.Security.Claims.Claim(ClaimTypes.Name, username));
+    
+    if (!string.IsNullOrEmpty(authResult.Token))
+    {
+        identity.AddClaim(new System.Security.Claims.Claim("external_token", authResult.Token));
+        identity.AddClaim(new System.Security.Claims.Claim("jwt_token", authResult.Token));
+        identity.AddClaim(new System.Security.Claims.Claim("jwt_key", authResult.Token));
+    }
+    if (!string.IsNullOrEmpty(authResult.SessionKey))
+    {
+        identity.AddClaim(new System.Security.Claims.Claim("session_key", authResult.SessionKey));
+        identity.AddClaim(new System.Security.Claims.Claim("sessionId", authResult.SessionKey));
+    }
     
     var principal = new ClaimsPrincipal(identity);
     await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
@@ -279,6 +296,18 @@ app.MapPost("/login", async (HttpContext context, IUserAuthenticationService aut
         returnUrl = "/";
     }
 
+    return Results.Redirect(returnUrl);
+});
+
+// Clear local authentication cookie and session
+app.MapGet("/logout", async (HttpContext context) =>
+{
+    await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    var returnUrl = context.Request.Query["ReturnUrl"].ToString();
+    if (string.IsNullOrEmpty(returnUrl))
+    {
+        returnUrl = "/login";
+    }
     return Results.Redirect(returnUrl);
 });
 
@@ -308,6 +337,39 @@ app.MapMethods("/connect/authorize", new[] { "GET", "POST" }, async (HttpContext
     identity.AddClaim(new System.Security.Claims.Claim(OpenIddictConstants.Claims.Subject, username));
     identity.AddClaim(new System.Security.Claims.Claim(OpenIddictConstants.Claims.Name, username)
         .SetDestinations(OpenIddictConstants.Destinations.AccessToken, OpenIddictConstants.Destinations.IdentityToken));
+
+    // Copy external authentication claims from cookie principal into the OIDC token context
+    var extToken = result.Principal.FindFirst("external_token")?.Value ?? result.Principal.FindFirst("jwt_token")?.Value;
+    if (!string.IsNullOrEmpty(extToken))
+    {
+        identity.AddClaim(new System.Security.Claims.Claim("external_token", extToken)
+            .SetDestinations(OpenIddictConstants.Destinations.AccessToken, OpenIddictConstants.Destinations.IdentityToken));
+        identity.AddClaim(new System.Security.Claims.Claim("jwt_token", extToken)
+            .SetDestinations(OpenIddictConstants.Destinations.AccessToken, OpenIddictConstants.Destinations.IdentityToken));
+        identity.AddClaim(new System.Security.Claims.Claim("jwt_key", extToken)
+            .SetDestinations(OpenIddictConstants.Destinations.AccessToken, OpenIddictConstants.Destinations.IdentityToken));
+    }
+
+    var sessKey = result.Principal.FindFirst("session_key")?.Value ?? result.Principal.FindFirst("sessionId")?.Value;
+    if (!string.IsNullOrEmpty(sessKey))
+    {
+        identity.AddClaim(new System.Security.Claims.Claim("session_key", sessKey)
+            .SetDestinations(OpenIddictConstants.Destinations.AccessToken, OpenIddictConstants.Destinations.IdentityToken));
+        identity.AddClaim(new System.Security.Claims.Claim("sessionId", sessKey)
+            .SetDestinations(OpenIddictConstants.Destinations.AccessToken, OpenIddictConstants.Destinations.IdentityToken));
+    }
+
+    // Configure dynamic Refresh Token expiration matching the external token
+    var extExpiration = GetJwtExpiration(extToken);
+    if (extExpiration.HasValue)
+    {
+        var remainingTime = extExpiration.Value - DateTime.UtcNow;
+        if (remainingTime <= TimeSpan.Zero)
+        {
+            remainingTime = TimeSpan.FromMinutes(1);
+        }
+        identity.SetRefreshTokenLifetime(remainingTime);
+    }
 
     // Dynamic claim assignment based on requested scopes
     if (request.HasScope(OpenIddictConstants.Scopes.Email))
@@ -339,13 +401,13 @@ app.MapPost("/connect/token", async (HttpContext context, IUserAuthenticationSer
 
     if (request.IsPasswordGrantType())
     {
-        var isValid = await authService.ValidateCredentialsAsync(request.Username ?? "", request.Password ?? "");
-        if (!isValid)
+        var authResult = await authService.ValidateCredentialsAsync(request.Username ?? "", request.Password ?? "");
+        if (!authResult.Success)
         {
             var properties = new AuthenticationProperties(new Dictionary<string, string?>
             {
                 [OpenIddictServerAspNetCoreConstants.Properties.Error] = Errors.InvalidGrant,
-                [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] = "The username/password combination is invalid."
+                [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] = authResult.ErrorMessage ?? "The username/password combination is invalid."
             });
             return Results.Challenge(properties, new[] { OpenIddictServerAspNetCoreDefaults.AuthenticationScheme });
         }
@@ -354,6 +416,25 @@ app.MapPost("/connect/token", async (HttpContext context, IUserAuthenticationSer
         identity.AddClaim(new System.Security.Claims.Claim(OpenIddictConstants.Claims.Subject, request.Username!));
         identity.AddClaim(new System.Security.Claims.Claim(OpenIddictConstants.Claims.Name, request.Username!)
             .SetDestinations(OpenIddictConstants.Destinations.AccessToken, OpenIddictConstants.Destinations.IdentityToken));
+
+        // Inject external auth claims into the issued tokens
+        if (!string.IsNullOrEmpty(authResult.Token))
+        {
+            identity.AddClaim(new System.Security.Claims.Claim("external_token", authResult.Token)
+                .SetDestinations(OpenIddictConstants.Destinations.AccessToken, OpenIddictConstants.Destinations.IdentityToken));
+            identity.AddClaim(new System.Security.Claims.Claim("jwt_token", authResult.Token)
+                .SetDestinations(OpenIddictConstants.Destinations.AccessToken, OpenIddictConstants.Destinations.IdentityToken));
+            identity.AddClaim(new System.Security.Claims.Claim("jwt_key", authResult.Token)
+                .SetDestinations(OpenIddictConstants.Destinations.AccessToken, OpenIddictConstants.Destinations.IdentityToken));
+        }
+
+        if (!string.IsNullOrEmpty(authResult.SessionKey))
+        {
+            identity.AddClaim(new System.Security.Claims.Claim("session_key", authResult.SessionKey)
+                .SetDestinations(OpenIddictConstants.Destinations.AccessToken, OpenIddictConstants.Destinations.IdentityToken));
+            identity.AddClaim(new System.Security.Claims.Claim("sessionId", authResult.SessionKey)
+                .SetDestinations(OpenIddictConstants.Destinations.AccessToken, OpenIddictConstants.Destinations.IdentityToken));
+        }
 
         // Dynamic claim assignment based on requested scopes
         if (request.HasScope(OpenIddictConstants.Scopes.Email))
@@ -368,6 +449,18 @@ app.MapPost("/connect/token", async (HttpContext context, IUserAuthenticationSer
             var givenName = request.Username == "CUS9999" ? "TJ" : request.Username!;
             identity.AddClaim(new System.Security.Claims.Claim(OpenIddictConstants.Claims.GivenName, givenName)
                 .SetDestinations(OpenIddictConstants.Destinations.AccessToken, OpenIddictConstants.Destinations.IdentityToken));
+        }
+
+        if (authResult.TokenExpiration.HasValue)
+        {
+            var remainingTime = authResult.TokenExpiration.Value - DateTime.UtcNow;
+            if (remainingTime <= TimeSpan.Zero)
+            {
+                remainingTime = TimeSpan.FromMinutes(1); // Minimal fallback if already expired
+            }
+            
+            // Set Refresh Token lifetime directly on the identity to match the external token's expiration
+            identity.SetRefreshTokenLifetime(remainingTime);
         }
 
         var principal = new ClaimsPrincipal(identity);
@@ -420,6 +513,25 @@ app.MapMethods("/connect/userinfo", new[] { "GET", "POST" }, async (HttpContext 
 app.MapMcpEndpoints();
 
 // --- Administrative API Endpoints ---
+app.MapPost("/admin/api/login-pin", async (AdminPinRequest request, HttpContext context) =>
+{
+    var expectedPin = Environment.GetEnvironmentVariable("ADMIN_PIN") ?? "052512";
+    if (string.Equals(request.Pin?.Trim(), expectedPin, StringComparison.Ordinal))
+    {
+        var identity = new ClaimsIdentity(CookieAuthenticationDefaults.AuthenticationScheme);
+        identity.AddClaim(new System.Security.Claims.Claim(ClaimTypes.NameIdentifier, "admin"));
+        identity.AddClaim(new System.Security.Claims.Claim(ClaimTypes.Name, "McpAdmin"));
+        identity.AddClaim(new System.Security.Claims.Claim(ClaimTypes.Role, "admin"));
+
+        var principal = new ClaimsPrincipal(identity);
+        await context.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+
+        return Results.Ok(new { success = true, message = "Admin authentication successful." });
+    }
+
+    return Results.Json(new { success = false, message = "Invalid Admin PIN." }, statusCode: 401);
+});
+
 app.MapGet("/admin/api/clients", async (OpenIddict.Abstractions.IOpenIddictApplicationManager manager) =>
 {
     var clients = new List<object>();
@@ -436,7 +548,7 @@ app.MapGet("/admin/api/clients", async (OpenIddict.Abstractions.IOpenIddictAppli
     }
     return Results.Json(clients);
 })
-.RequireAuthorization(new AuthorizeAttribute { AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme });
+.RequireAuthorization(new AuthorizeAttribute { Roles = "admin", AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme });
 
 app.MapPost("/admin/api/clients/create", async (CreateClientRequest request, OpenIddict.Abstractions.IOpenIddictApplicationManager manager) =>
 {
@@ -483,7 +595,7 @@ app.MapPost("/admin/api/clients/create", async (CreateClientRequest request, Ope
     await manager.CreateAsync(descriptor);
     return Results.Ok();
 })
-.RequireAuthorization(new AuthorizeAttribute { AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme });
+.RequireAuthorization(new AuthorizeAttribute { Roles = "admin", AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme });
 
 app.MapPost("/admin/api/clients/update", async (UpdateClientRequest request, OpenIddict.Abstractions.IOpenIddictApplicationManager manager) =>
 {
@@ -514,7 +626,7 @@ app.MapPost("/admin/api/clients/update", async (UpdateClientRequest request, Ope
     await manager.UpdateAsync(app, descriptor);
     return Results.Ok();
 })
-.RequireAuthorization(new AuthorizeAttribute { AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme });
+.RequireAuthorization(new AuthorizeAttribute { Roles = "admin", AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme });
 
 app.MapPost("/admin/api/clients/delete", async (DeleteClientRequest request, OpenIddict.Abstractions.IOpenIddictApplicationManager manager) =>
 {
@@ -532,26 +644,63 @@ app.MapPost("/admin/api/clients/delete", async (DeleteClientRequest request, Ope
     await manager.DeleteAsync(app);
     return Results.Ok();
 })
-.RequireAuthorization(new AuthorizeAttribute { AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme });
+.RequireAuthorization(new AuthorizeAttribute { Roles = "admin", AuthenticationSchemes = CookieAuthenticationDefaults.AuthenticationScheme });
 
 
-// Map static admin page and secure it
-app.MapGet("/admin.html", async (HttpContext context) =>
+
+// Map static admin page directly (unauthenticated users will be prompted for PIN by the page script)
+app.MapGet("/admin.html", () =>
 {
-    var result = await context.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-    if (!result.Succeeded || result.Principal == null)
-    {
-        return Results.Redirect("/login?ReturnUrl=/admin.html");
-    }
     var path = FindFilePath(Path.Combine("wwwroot", "admin.html"));
     return Results.File(path, "text/html");
 });
 
-// Fallback index route
-app.MapGet("/", () => Results.Text("PGW OIDC MCP Authentication Server running. Access OIDC discovery at /.well-known/openid-configuration", "text/plain"));
+// Default root route serves the admin page
+app.MapGet("/", () =>
+{
+    var path = FindFilePath(Path.Combine("wwwroot", "admin.html"));
+    return Results.File(path, "text/html");
+});
+
+// Helper to decode JWT expiration from payload without signature verification
+static DateTime? GetJwtExpiration(string? jwtToken)
+{
+    if (string.IsNullOrEmpty(jwtToken)) return null;
+
+    try
+    {
+        var parts = jwtToken.Split('.');
+        if (parts.Length < 2) return null;
+
+        var payloadBase64 = parts[1];
+        payloadBase64 = payloadBase64.Replace('-', '+').Replace('_', '/');
+        switch (payloadBase64.Length % 4)
+        {
+            case 2: payloadBase64 += "=="; break;
+            case 3: payloadBase64 += "="; break;
+        }
+
+        var payloadBytes = Convert.FromBase64String(payloadBase64);
+        var payloadJson = System.Text.Encoding.UTF8.GetString(payloadBytes);
+        
+        using var doc = JsonDocument.Parse(payloadJson);
+        if (doc.RootElement.TryGetProperty("exp", out var expProp))
+        {
+            var expSeconds = expProp.GetInt64();
+            return DateTimeOffset.FromUnixTimeSeconds(expSeconds).UtcDateTime;
+        }
+    }
+    catch
+    {
+        // Ignore parsing errors
+    }
+    return null;
+}
 
 app.Run();
 
+public record AdminPinRequest(string Pin);
 public record CreateClientRequest(string ClientId, string DisplayName, List<string> RedirectUris);
 public record UpdateClientRequest(string ClientId, string DisplayName, List<string> RedirectUris);
 public record DeleteClientRequest(string ClientId);
+

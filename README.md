@@ -7,7 +7,9 @@ A Model Context Protocol (MCP) server gateway integrated with an OAuth 2.0 / Ope
 ## Features
 - **OIDC/OAuth 2.0 Authorization Server:** Powered by [OpenIddict](https://github.com/openiddict/openiddict-core) to issue access tokens, identity tokens, and refresh tokens.
 - **Unified Remote MCP Endpoint:** Exposes a unified `/mcp` EventSource/Server-Sent Events (SSE) route secured via OIDC Bearer tokens.
-- **Dynamic Client Management Portal:** A secure, glassmorphic admin panel (`/admin.html`) to dynamically register client applications, manage Client IDs, and configure allowed redirect callback URLs.
+- **Dynamic Client Management Portal & Admin PIN Auth:** A secure, glassmorphic admin panel (`http://localhost:5000/` or `/admin.html`) secured via a fast, lightweight Admin PIN (**`052512`** by default or `ADMIN_PIN` environment variable) to register client applications, manage Client IDs, and configure allowed redirect callback URLs without hitting external auth endpoints.
+- **Terms & Conditions Enforcement:** Built-in required Terms & Conditions agreement checkbox on the OIDC login page (`/login`) before authorizing session access.
+- **Client & Server Session Logout:** Full session logout support (`/logout`) in both server and sample client UI (`src/OidcClient`) to invalidate server cookies and reset test states without needing browser incognito mode.
 - **SQLite Storage:** Full Entity Framework Core integration with SQLite for local persistence across restarts, dynamically configured to support persistent volume mounts (e.g. `/app/data/mcp.db`).
 - **Preconfigured Scopes:** Supports standard `openid`, `profile`, `email`, `offline_access` (refresh tokens), and a dedicated `mcp` scope for remote client tool validation.
 
@@ -21,19 +23,35 @@ A Model Context Protocol (MCP) server gateway integrated with an OAuth 2.0 / Ope
 
 ## Running Locally
 
-1. **Build and Run the Server:**
+1. **Configure Environment Variables:**
+   To validate login credentials and extract OIDC session keys, the server requires the URL of the external mobile authentication service. Set the `EXTERNAL_AUTH_ENDPOINT` environment variable (and optionally customize `ADMIN_PIN`):
+   ```bash
+   # Windows (PowerShell):
+   $env:EXTERNAL_AUTH_ENDPOINT="https://<YOUR_SERVER_HOST>/mobile/mobileauth/authenticate"
+   $env:ADMIN_PIN="052512" # Optional (Default: 052512)
+
+   # Windows (Command Prompt):
+   set EXTERNAL_AUTH_ENDPOINT=https://<YOUR_SERVER_HOST>/mobile/mobileauth/authenticate
+   set ADMIN_PIN=052512
+
+   # Linux/macOS:
+   export EXTERNAL_AUTH_ENDPOINT="https://<YOUR_SERVER_HOST>/mobile/mobileauth/authenticate"
+   export ADMIN_PIN="052512"
+
+   ```
+   *(Alternatively, configure this in your custom configuration using the `ExternalAuth:Endpoint` JSON key).*
+
+2. **Build and Run the Server:**
    ```bash
    dotnet build
    dotnet run --project src/McpServer
    ```
    The OIDC authentication server will start and listen at `http://localhost:5000/`.
 
-2. **Access the Client Management Panel:**
-   - Navigate to `http://localhost:5000/admin.html`.
-   - Log in using the seeded test credentials:
-     * **Username:** `CUS9999`
-     * **Password:** `test5PGW`
-   - Register Client IDs or configure allowed OIDC Redirect URIs.
+3. **Access the Client Management Panel:**
+   - Navigate to `http://localhost:5000/` or `http://localhost:5000/admin.html`.
+   - Enter your Admin PIN (**`052512`** or your configured `ADMIN_PIN`).
+   - Register Client IDs, display names, or configure allowed OIDC Redirect URIs.
 
 ---
 
@@ -103,3 +121,4 @@ A script [test_oidc_mcp.py](file:///c:/Development/labs/mcp/test_oidc_mcp.py) is
    # On Windows (PowerShell):
    Remove-Item -Recurse -Force mcp-venv
    ```
+

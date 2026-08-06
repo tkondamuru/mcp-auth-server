@@ -535,3 +535,22 @@ function decodeJwt(token) {
     Decoded directly in the browser's JavaScript. The client app trusts the payload because the token was fetched directly from the secure `/connect/token` SSL endpoint.
 *   **Server-Side (Backend for Frontend - BFF Pattern):**
     In highly secure environments, developers avoid exposing any tokens to browser memory (to prevent cross-site scripting/XSS thefts). Instead, a server-side backend acts as the OIDC client. It intercepts the `id_token`, validates it server-side, sets a secure `HttpOnly; Secure; SameSite=Strict` session cookie in the browser, and manages the user session on the server. The frontend never sees the raw JWT.
+
+---
+
+### Q23: Why does `Program.cs` set multiple claim names for the external token (`external_token`, `jwt_token`, `jwt_key`) and session key (`session_key`, `sessionId`)?
+
+**For backwards compatibility and multi-client payload interoperability.**
+
+Different downstream clients and legacy SDKs (Flutter mobile app, Python test scripts, web portals, MCP tools) parse claims using different naming conventions:
+
+*   **Token Aliases (`authResult.Token`):**
+    *   `external_token`: Used by current OIDC documentation and handlers to explicitly distinguish the external auth token from the OIDC token.
+    *   `jwt_token`: Standard claim name expected by generic API clients.
+    *   `jwt_key`: Legacy claim name expected by older mobile client builds.
+*   **Session Key Aliases (`authResult.SessionKey`):**
+    *   `session_key`: Used by C# and Python backend services (`snake_case`).
+    *   `sessionId`: Used by JavaScript / web frontends (`camelCase`).
+
+Populating all alias claims when constructing the `ClaimsIdentity` ensures that any client decoding the issued access or ID token finds its expected key without requiring synchronous updates across all client applications.
+

@@ -11,6 +11,8 @@ This document tracks the deployment of the PGW OIDC MCP server to an Azure Virtu
 - `[x]` Step 3: Connect via SSH & Install Docker
 - `[x]` Step 4: Clone Code, Build Container, and Run with SQLite Persistence
 - `[x]` Step 5: Install Nginx, Set Up Reverse Proxy, and Bind SSL with Certbot
+- `[x]` Step 6: Procedure for Deploying New Code Revisions & Testing
+
 
 ---
 
@@ -148,8 +150,8 @@ sudo docker build -t mcp-server .
 > **Docker Layer Caching:**
 > The initial build takes 1-2 minutes to download base SDKs and restore dependencies. Subsequent builds are extremely fast (10-15 seconds) because Docker caches the SDK layers and NuGet package restorations, only rebuilding modified source code files.
 
-### 3. Run the Container with Volume Persistence
-Create a storage directory `/data` on the VM host. We will map this directory to the container so that your SQLite database `mcp.db` survives container updates and restarts:
+### 3. Run the Container with Volume Persistence and Environment Variables
+Create a storage directory `/data` on the VM host. We will map this directory to the container so that your SQLite database `mcp.db` survives container updates and restarts, and pass the required environment variables:
 ```bash
 # Create directory on the host machine
 sudo mkdir -p /data
@@ -159,6 +161,8 @@ sudo docker run -d \
   -p 5000:5000 \
   -v /data:/app/data \
   -e DATABASE_PATH=/app/data/mcp.db \
+  -e EXTERNAL_AUTH_ENDPOINT="https://<YOUR_SERVER_HOST>/mobile/mobileauth/authenticate" \
+  -e ADMIN_PIN="052512" \
   --restart unless-stopped \
   --name mcp-app \
   mcp-server
@@ -238,3 +242,61 @@ Test that Kestrel is now successfully serving SSL traffic to the internet:
 curl -I https://mcp-server-kondulabs.eastus2.cloudapp.azure.com
 ```
 *(Should return HTTP 200 OK headers).*
+
+---
+
+## Step 6: Deploying a New Code Revision
+
+Whenever you make code updates or bug fixes locally and push them to your GitHub repository, follow this procedure on your Azure VM to deploy the new revision with zero database data loss:
+
+### 1. Connect to the Azure VM via SSH
+```bash
+ssh azureuser@mcp-server-kondulabs.eastus2.cloudapp.azure.com
+```
+
+### 2. Pull Latest Code Changes
+Navigate to the repository folder and pull the latest commits:
+```bash
+cd ~/mcp-auth-server
+git pull origin main
+```
+
+### 3. Rebuild the Docker Image
+Recompile the Docker container using Docker layer caching:
+```bash
+sudo docker build -t mcp-server .
+```
+
+### 4. Replace the Running Container
+Stop and remove the existing container, then launch the new container mapping the persistent volume and environment variables:
+```bash
+# Stop and remove current running instance
+sudo docker stop mcp-app
+sudo docker rm mcp-app
+
+# Launch updated container instance
+sudo docker run -d \
+  -p 5000:5000 \
+  -v /data:/app/data \
+  -e DATABASE_PATH=/app/data/mcp.db \
+  -e EXTERNAL_AUTH_ENDPOINT="https://<YOUR_SERVER_HOST>/mobile/mobileauth/authenticate" \
+  -e ADMIN_PIN="052512" \
+  --restart unless-stopped \
+  --name mcp-app \
+  mcp-server
+```
+
+### 5. Test & Verify Deployment
+Run local and public `curl` checks to verify the container is responding and inspect the application logs:
+```bash
+# Test local container health
+curl -I http://localhost:5000
+
+# Test public HTTPS endpoint through Nginx
+curl -I https://mcp-server-kondulabs.eastus2.cloudapp.azure.com
+
+# Stream container logs to verify clean startup
+sudo docker logs --tail 50 -f mcp-app
+```
+*(Press `Ctrl+C` to stop streaming logs).*
+

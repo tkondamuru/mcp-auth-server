@@ -460,3 +460,25 @@ Here is the comparative breakdown of the two:
 
 #### Summary
 OIDC extends OAuth 2.0 by introducing the **ID Token** containing standardized claims. This allows client applications to safely establish a local user session, while OAuth 2.0 concerns itself strictly with issuing the `access_token` that allows client applications to call protected APIs.
+
+---
+
+### Q9: Why is the access token issued by OpenIddict so large and un-decodable by tools like `jwt.io`? How does `DisableAccessTokenEncryption()` fix this?
+
+*   **Default Behavior (JWE Encryption):** 
+    By default, OpenIddict encrypts issued Access Tokens using JSON Web Encryption (JWE) with algorithms like `RSA-OAEP` (key encryption) and `A256CBC-HS512` (content encryption). This makes the access token an opaque payload that client applications cannot decode or inspect, protecting user privacy and token contents.
+*   **The Issue:** 
+    Because the token is encrypted, pasting it into public debugging tools like `jwt.io` will fail to decode the payload. The header will show `enc` and `alg` compression fields, but the body remains encrypted ciphertext.
+*   **The Solution (`DisableAccessTokenEncryption()`):**
+    By calling `.DisableAccessTokenEncryption()` during the server options setup in `Program.cs`, we tell OpenIddict to issue standard, signed-only JSON Web Tokens (JWT) instead of encrypted JWE tokens:
+    ```csharp
+    services.AddOpenIddict()
+        .AddServer(options =>
+        {
+            options.SetAccessTokenLifetime(TimeSpan.FromHours(1))
+                   .DisableAccessTokenEncryption(); // <-- Disables JWE encryption
+        });
+    ```
+*   **Result:** 
+    The generated access token becomes a standard three-part JWT (`Header.Payload.Signature`) separated by periods. It is significantly smaller and can be parsed instantly by `jwt.io` or validated locally by downstream third-party resource servers.
+
